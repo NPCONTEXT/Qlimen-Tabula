@@ -1,0 +1,900 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>无限表格</title>
+<link rel="icon" href="/favicon.ico">
+<style>
+:root{
+  --ink:#1f2328; --sub:#626a75; --faint:#9aa1ab; --grid:#ebedf0; --hair:#d6dade;
+  --done:#7cc64a; --done-bg:#d9f0c8; --done-ink:#1f530a;
+  --wait:#ffc21a; --wait-bg:#ffe58a; --wait-ink:#4d3700;
+  --old:#d8d2bd; --old-bg:#f1eee4; --old-ink:#857c63; --todo:#e3e6ea; --prog:#bcd7f2;
+  --claude:#d97757; --k31:#1a9bfc; --flash:#7b61ff; --codex:#10a37f; --other:#6b7280;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{color:var(--ink);font:14px/1.45 -apple-system,"PingFang SC","Hiragino Sans GB","Helvetica Neue",Arial,sans-serif;background:#fff}
+.app{position:fixed;inset:0;display:flex;flex-direction:column}
+.tb{height:34px;flex:none;display:flex;align-items:center;gap:10px;padding:0 12px;font-size:12.5px;color:var(--sub);background:#f6f7f8;border-bottom:1px solid var(--hair);white-space:nowrap;overflow:hidden}
+.tb b{color:var(--ink);font-size:13px}
+.tb .logo{width:18px;height:18px;flex:none;margin-right:-4px}
+.nbox{color:var(--ink);background:#fff;border:1px solid var(--hair);padding:0 6px;line-height:20px;min-width:150px;font-size:12px}
+.tbr{margin-left:auto;display:flex;gap:8px;align-items:center}
+.btn{font:inherit;font-size:12px;border:1px solid var(--hair);background:#fff;border-radius:6px;padding:2px 9px;cursor:pointer;color:var(--ink)}
+.btn.dark{background:var(--ink);color:#fff;border-color:var(--ink)}
+.chip{font-size:12px;border:1px solid var(--hair);border-radius:999px;padding:1px 9px;cursor:pointer;background:#fff;color:var(--ink)}
+.chip.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.spend{font-size:11.5px;color:var(--sub)}
+.body{flex:1;display:flex;min-height:0}
+.vp{flex:1;position:relative;overflow:hidden;background:#fff}
+.cv{position:absolute;left:0;top:0;width:3000px;height:4000px;transform-origin:0 0;transition:transform .55s cubic-bezier(.3,.7,.2,1);background-size:var(--CW) var(--G);background-position:var(--G) 0}
+.cv.pan{transition:none}
+.district{position:absolute;z-index:6;font-size:12px;color:var(--faint);letter-spacing:.04em;white-space:nowrap}.district .cj{color:#c62828;font-weight:600}
+/* 总览：任务 = 合并的格子 */
+.r{position:absolute;background:#fff;border-radius:var(--R);box-shadow:0 0 0 1px #dcdfe4;transition:left .45s cubic-bezier(.3,.7,.2,1),top .45s cubic-bezier(.3,.7,.2,1),width .45s cubic-bezier(.3,.7,.2,1),height .45s cubic-bezier(.3,.7,.2,1),opacity .3s ease;overflow:hidden;cursor:pointer}
+.r:hover{box-shadow:0 0 0 1px #9aa1ab}
+.hd{padding:4px 7px;display:flex;flex-direction:column;justify-content:center;gap:4px}
+.tn{font-size:12px;font-weight:600;display:flex;align-items:baseline;gap:4px;line-height:1.25}
+.tn .nm{overflow-wrap:anywhere}
+.tn .go{margin-left:auto;font-weight:400;font-size:11px;color:var(--k31);white-space:nowrap}
+.br{display:flex;align-items:center;gap:6px}
+.br small{font-size:10.5px;color:var(--sub);font-variant-numeric:tabular-nums;white-space:nowrap}
+.sbar{display:flex;flex:1;height:var(--BH);overflow:hidden;background:var(--todo);border-radius:var(--BR)}
+.sbar i{flex:1 1 0;background:var(--todo)}
+.sbar i.d{background:var(--done)} .sbar i.w{background:var(--wait)} .sbar i.o{background:var(--old)} .sbar i.p{background:var(--prog)}
+.r.unread .sbar{background:repeating-linear-gradient(45deg,#eceef1 0 4px,#fff 4px 8px)}
+/* 展开的格子（11-01 二期补三，乙版）：任务宽 8 格，每一步 = 编号 2 格 + 名字 6 格；线画在格子的上边、左边，正好压在背景格线上 */
+.steps{display:grid;grid-template-columns:repeat(8,16px);column-gap:calc(2*var(--I));row-gap:calc(2*var(--I));margin-top:calc(2*var(--I))}
+.st{grid-column:span 8;font-size:var(--FS);padding:0 6px;background:#f1f3f5;border-radius:var(--R2);display:flex;flex-direction:column;justify-content:center;line-height:1.3;overflow:hidden;white-space:nowrap;color:var(--sub)}
+.st.d{background:var(--done-bg);color:var(--done-ink)}
+.st.w{background:var(--wait-bg);color:var(--wait-ink);font-weight:600;cursor:pointer}
+.st.w small{font-weight:400;white-space:nowrap;overflow:hidden}
+.st.o{background:var(--old-bg);color:var(--old-ink);cursor:pointer}
+.st.p{background:#e6f0fb}
+.st.f{background:#f1f3f5;color:var(--faint)}
+.st.ag{color:var(--ink);background:#fff;white-space:normal}
+.st.sec{background:#fff;color:var(--faint);font-size:11px}
+.st.c2{grid-column:span 2;padding:0 0 0 5px;font-variant-numeric:tabular-nums}
+.st.c6{grid-column:span 6}
+.st.c4{grid-column:span 4}
+.st.wrap{white-space:normal}
+.sleep{position:absolute;display:flex;flex-wrap:wrap;gap:2px;align-items:center;font-size:11px;color:var(--faint);transition:top .35s ease}
+.sleep i{width:8px;height:8px;background:#e3e6ea;border-radius:2px}
+.sg{display:grid;width:100%}
+.sg .sh{grid-column:1 / span 2;display:flex;align-items:center;padding-left:6px;font-size:12px;color:var(--faint);font-weight:600;white-space:nowrap}
+.sg .shz{cursor:pointer}.sg .shz:hover{text-decoration:underline}
+.sb{margin:3px;border-radius:var(--R);background:#e9ecf0;display:flex;align-items:center;padding:0 12px;font:500 12.5px -apple-system,'PingFang SC',sans-serif;color:#4a505a;cursor:grab;overflow:hidden;white-space:nowrap}
+.sb.dn{background:var(--done-bg)}
+.sb.ar{background:#fff;box-shadow:inset 0 0 0 1.5px #b9bec6}
+.sleep i.dn{background:var(--done-bg)}
+.sleep span{margin-left:4px}
+/* 开着灯：谁的颜色一道实色选框 + 右上角名牌；运行时框上一小段颜色稍淡的色块慢慢走 */
+.sbar.ph{background:repeating-linear-gradient(90deg,#dfe2e6 0 6px,transparent 6px 10px)}
+.r>.grip{position:absolute;right:1px;bottom:1px;width:12px;height:12px;display:none;cursor:nwse-resize;z-index:2;background:linear-gradient(135deg,transparent 0 42%,#9aa1ab 42% 50%,transparent 50% 62%,#9aa1ab 62% 70%,transparent 70% 82%,#9aa1ab 82% 90%,transparent 90%)}
+.r:not(.row1):not(.fold):hover>.grip{display:block}
+.r.fold .fd{position:absolute;left:7px;right:7px;top:11px;height:4px;border-radius:2px;background:#e3e6ea;overflow:hidden}.r.fold .fd b{display:block;height:100%;background:var(--ok,#7cc95a)}
+.r.dragsrc{opacity:.25}.drag-ghost{pointer-events:none;z-index:20;opacity:.93;transform:rotate(-1.2deg);box-shadow:0 12px 26px rgba(0,0,0,.2),0 0 0 1px #c9ced6!important;transition:none!important}
+.drop{position:absolute;pointer-events:none;z-index:19;border-radius:var(--R);background:rgba(59,130,246,.13);box-shadow:inset 0 0 0 1.5px rgba(59,130,246,.8);font:600 12px/26px -apple-system,sans-serif;color:#3b82f6;text-align:center}
+body.dragging{-webkit-user-select:none;user-select:none;cursor:grabbing}.sleep i[data-k]{cursor:grab}.sleep i.ar{background:transparent;box-shadow:inset 0 0 0 1.5px #9aa1ab}
+.claim{position:absolute;pointer-events:none;z-index:3;transition:left .45s cubic-bezier(.3,.7,.2,1),top .45s cubic-bezier(.3,.7,.2,1),width .45s cubic-bezier(.3,.7,.2,1),height .45s cubic-bezier(.3,.7,.2,1),opacity .3s ease}
+.claim svg{position:absolute;left:0;top:0;width:100%;height:100%;overflow:visible;z-index:1}
+.claim rect{x:0;y:0;width:100%;height:100%;fill:none;stroke-width:var(--FW);rx:var(--R)}
+.wa .claim rect{rx:var(--R2)}
+.claim .cf{stroke:var(--c)}
+.claim .cb{stroke:color-mix(in srgb,var(--c) 45%,#fff);stroke-dasharray:10 90;animation:crawl 12s linear infinite}
+@keyframes crawl{to{stroke-dashoffset:-100}}
+/* 名牌（11-02 02:4x 用户定的丙）：放进所属格子的右上角，只写状态（施工 / 等你 / 撞格），谁在做看颜色；底色 75%、白字；选框不变。
+   宽是整格（1 格 36px，两个字），总览、施工区、第一层同一套 */
+.ctags{position:absolute;right:0;top:0;display:flex;gap:4px;z-index:0}
+.ctag{height:var(--h1);display:flex;align-items:center;justify-content:center;font-size:var(--FP);font-weight:600;color:#fff;background:color-mix(in srgb,var(--c) 75%,transparent);white-space:nowrap;border-radius:var(--R)}   /* 卷四 6.47–6.48（用户 11-06：「名牌本身就是一格占用，不是圆角反而奇怪」「照搬总览，那证明总览也有问题」）：名牌照一格的样子四角都圆，第 1 层、名牌层、总览一样；施工区的框圆角小一号，名牌跟着 */
+.wa .ctag{border-radius:var(--R2)}
+.ctag.hit{background:color-mix(in srgb,#c62828 75%,transparent)}
+.claim.wait .cb{display:none}
+:root{--xu:#a3a9b1}   /* 待续：任务自己的灰（卷四 6.26 乙） */
+a.sess{color:var(--sub);text-decoration:none}
+@media (prefers-reduced-motion:reduce){.claim .cb{animation:none}.cv,.r,.claim,.sleep{transition:none}}
+/* 施工区 */
+.wa{position:absolute}
+/* 施工区也落在格子上：每列 5 格（196px，11-02 02:4x 用户定的丙），表头和段落行 1 格，每镜 3 格 */
+.mx{display:grid;grid-template-columns:repeat(4,var(--mcw));gap:calc(2*var(--I));padding:var(--I);width:max-content}
+.mx>*{box-shadow:0 0 0 1px #e0e3e7;border-radius:4px;background-color:#fff}
+.mx .h{font-size:var(--FS);color:var(--sub);height:var(--h1);line-height:var(--h1);padding:0 6px;background:#eef0f2;box-shadow:none}
+.mx .rl{font-size:12px;background:#fff;padding:0 6px;display:flex;align-items:center;gap:6px;cursor:pointer;line-height:1.25}
+.mx .rl b{font-variant-numeric:tabular-nums}
+.mx .rl .tag{font-size:10.5px;color:var(--sub)}
+.mx .rl.sel{outline:2px solid var(--ink);outline-offset:-2px}
+.mc{position:relative;height:var(--h3);overflow:hidden;background:#fff center/cover no-repeat;font-size:11.5px;color:var(--faint);display:flex;align-items:center;justify-content:center;text-align:center;padding:0 4px;cursor:pointer;line-height:1.3}
+.mc.d{background-color:var(--done-bg);color:var(--done-ink)}
+.mc.w{box-shadow:inset 0 0 0 2px var(--wait);background-color:var(--wait-bg);color:var(--wait-ink);font-weight:600}
+.mc.sel{outline:2px solid var(--ink);outline-offset:-2px}
+.mc .lb{position:absolute;left:0;right:0;bottom:0;font-size:10.5px;line-height:15px;background:#ffffffd9;color:var(--ink);font-weight:400}
+.mc.w .lb{background:#ffe58ae6;color:var(--wait-ink);font-weight:600}
+/* 卷四 6.65–6.66 施工区横排：字段一行一个、每镜 3 格宽、左边字段名粘住；文字格就地改，样图点开大图、样片用 QuickTime，悬停「选」直接挑 */
+.wa .hc{position:absolute;box-sizing:border-box;background:#fff;border-radius:var(--R2);box-shadow:0 0 0 1px #e0e3e7;overflow:hidden;font-size:11.5px}
+.wa .hno{display:flex;align-items:center;gap:5px;padding:0 6px;white-space:nowrap;cursor:pointer}.wa .hno b{font-size:12.5px}.wa .hno span{color:var(--sub);overflow:hidden}.wa .hno .tag{font-style:normal;font-size:10.5px;color:var(--sub)}
+.wa .hst{display:flex;align-items:center;justify-content:center;font-weight:600;cursor:text}
+.wa .htx{padding:4px 6px;line-height:15px;font-size:11px;cursor:text}.wa .htx .hsp{float:right;width:60px;height:17px;margin-top:-4px}.wa .htx .hx{display:-webkit-box;-webkit-box-orient:vertical;overflow:hidden}.wa .htx .sub{color:var(--sub)}.wa .sub0{color:#c0c5cc}
+.wa .hc.d{background:var(--done-bg);color:var(--done-ink)}.wa .hc.w{background:var(--wait-bg);box-shadow:inset 0 0 0 2px var(--wait),0 0 0 1px #e0e3e7;color:var(--wait-ink)}
+.wa .hc.sel{outline:2px solid var(--ink);outline-offset:-2px}
+.wa .him{cursor:pointer}.wa .him .mcands{position:absolute;left:0;right:0;top:0;display:flex;gap:4px;align-items:center;justify-content:center}.wa .him .mcands i{position:relative;flex:none;background:#eef0f2 center/contain no-repeat;border-radius:3px;cursor:zoom-in}.wa .him .mcands i.on{box-shadow:0 0 0 2px var(--ink)}
+.wa .him .mcands i b{position:absolute;right:3px;top:3px;font-size:10.5px;line-height:16px;padding:0 6px;border-radius:4px;background:#1f2328d9;color:#fff;display:none;cursor:pointer}.wa .him .mcands i:hover b{display:block}
+.wa .him .lb{position:absolute;left:0;right:0;bottom:0;font-size:10px;line-height:14px;text-align:center;background:#ffffffd9;color:var(--ink)}.wa .him.w .lb{background:#ffe58ae6;color:var(--wait-ink);font-weight:600}
+.wa .hzero{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#c0c5cc;font-size:11px}
+.wa .hseg{position:absolute;background:#eef0f2;border-radius:var(--R2);display:flex;align-items:center;overflow:hidden;font-size:13px}.wa .hseg span{padding-left:12px;white-space:nowrap}.wa .hseg small{margin-left:8px;color:var(--sub);font-size:12px}
+.wa .hlab{position:absolute;left:0;top:0;z-index:5;background:#fff}.wa .hlab::before{content:'';position:absolute;top:0;bottom:0;right:100%;width:var(--m1,16px);background:#fff}   /* 卷四 6.88（用户 11-06：冻结的第一列「没有覆盖到最左边的边框，移动后看起来怪怪的」）：往左补一条白底盖到窗口左边，滑过去的格子不从那条缝里露出来 */.wa .hlab>div{position:absolute;left:3px;right:3px;background:#eef0f2;border-radius:var(--R2);display:flex;align-items:center;justify-content:center;font-size:12.5px;font-weight:600;color:var(--sub)}
+/* 分卷五 竖排（条目一行一个）：字段名那一行冻结在顶上，往上补一条白底；段名在最左一列竖着写 */
+.wa .hlab.v::before{top:auto;bottom:100%;left:0;right:0;width:auto;height:var(--m1,16px)}.wa .hlab.v>div{top:3px;bottom:3px;right:auto}
+.wa .hseg.v{align-items:flex-start;justify-content:center}.wa .hseg.v span{writing-mode:vertical-rl;text-orientation:upright;padding:8px 0 0}.wa .hseg.v small{margin:4px 0 0}
+/* 分卷五 8.8（用户 11-07 挑甲）：点开的文字格原地变成能改的字，位置大小和格子一样，长了在格子里上下滑；几个字段上下分开，第二块起灰字 */
+.hin{position:absolute;z-index:8;background:#fff;border-radius:var(--R2);box-shadow:0 0 0 2px var(--ink);overflow:hidden;box-sizing:border-box;display:flex;flex-direction:column}
+.hin textarea{flex:1 1 0;min-height:0;display:block;width:100%;box-sizing:border-box;margin:0;border:0;outline:0;resize:none;padding:4px 6px;font:inherit;font-size:11px;line-height:15px;color:var(--ink);background:transparent;overflow-y:auto}
+.hin textarea.sub{flex:0 0 24px;color:var(--sub);border-top:1px dashed #e0e3e7}
+.hin textarea::-webkit-scrollbar{width:6px}.hin textarea::-webkit-scrollbar-thumb{background:#c4c9cf;border-radius:3px}.hin textarea::-webkit-scrollbar-track{background:transparent}
+#lbx{position:fixed;inset:0;z-index:50;background:#000c;display:none;align-items:center;justify-content:center}#lbx.on{display:flex}#lbx img{max-width:92vw;max-height:calc(100vh - 84px);object-fit:contain;margin-top:30px}
+#lbx .lbt{position:absolute;top:10px;left:16px;right:16px;display:flex;gap:10px;align-items:center;color:#fff;font-size:13px}#lbx .lbt .sp{flex:1}#lbx em{font-style:normal;color:#9fe08a}
+#lbx button{font:inherit;font-size:12.5px;padding:4px 12px;border-radius:6px;border:1px solid #fff6;background:#ffffff1f;color:#fff;cursor:pointer}#lbx .lbp,#lbx .lbn{position:absolute;top:50%;transform:translateY(-50%);font-size:28px;padding:6px 14px}#lbx .lbp{left:12px}#lbx .lbn{right:12px}
+.segrow{grid-column:1 / -1;font-size:var(--FT);color:var(--sub);height:var(--h1);padding:0 6px;display:flex;gap:10px;align-items:center;cursor:pointer;background:#eef0f2;box-shadow:none}
+.segrow b{color:var(--ink)}
+.segrow .sbar{flex:0 0 160px;height:5px}
+/* 右栏 */
+.side{width:0;flex:none;overflow:hidden;border-left:1px solid transparent;transition:width .3s ease;background:#fff}
+.side.open{width:360px;border-left-color:var(--hair)}
+.side .in{width:360px;height:100%;overflow:auto;padding:12px 14px 30px;font-size:12.5px}
+.side h3{margin:0 0 2px;font-size:14px}
+.side .shead{position:sticky;top:0;z-index:3;background:#fff;margin:-12px -14px 8px;padding:12px 14px 6px;display:flow-root}   /* 卷四 6.89：标题和「收起」粘在右栏顶上 */
+.side .meta{color:var(--sub);margin-bottom:10px}
+.blk{margin:10px 0 12px}
+.blk>.sh{font-weight:600;margin-bottom:5px}
+.blk>.sh small{font-weight:400;color:var(--sub);margin-left:6px}
+.ask{background:var(--wait-bg);padding:7px 9px;color:var(--wait-ink)}
+.note{background:#f6f7f8;padding:6px 8px;margin:4px 0}
+.note small{color:var(--sub)}
+.kv{display:grid;grid-template-columns:52px 1fr;gap:3px 8px;margin:6px 0}
+.kv dt{color:var(--faint)} .kv dd{margin:0}
+.cands{display:grid;grid-template-columns:repeat(3,104px);gap:1px;background:var(--hair);border:1px solid var(--hair);width:max-content}
+.cand{cursor:pointer;font-size:11.5px;text-align:center;color:var(--sub);background:#fff;position:relative}
+.cand .im{height:60px;background:#eee center/cover no-repeat}
+.cand.on .im{box-shadow:inset 0 0 0 3px var(--done)}
+.cand a{position:absolute;right:3px;top:3px;font-size:10.5px;background:#fff;padding:0 4px;color:var(--ink);text-decoration:none}
+.big{width:100%;max-height:220px;object-fit:contain;background:#f3f4f6;display:block}
+.btns{display:flex;gap:6px;margin:8px 0;flex-wrap:wrap}
+.btns .jie{margin-left:auto;align-self:center;font-size:12px}
+/* 11-03 04:0x 第三版：不加图标，停上去出下划线——标题（点了开文件夹）、名牌的字（点了进会话）、详情里的「接手」 */
+.tn2[data-dir]{cursor:default}
+html.cmd .tn2[data-dir]:hover{cursor:pointer}
+.tn2[data-dir]:hover .tx{text-decoration:underline;text-underline-offset:2px}
+.ctag.go2{pointer-events:auto;cursor:pointer;text-decoration:none}
+.ctag.go2:hover{text-decoration:underline;text-underline-offset:2px}
+.btns .jie{color:var(--sub);text-decoration:none}
+.btns .jie:hover{text-decoration:underline;text-underline-offset:2px}
+.btns button{font:inherit;font-size:12.5px;border:1px solid var(--hair);background:#fff;padding:3px 10px;cursor:pointer}
+.btns button.pk,.btns button.main{background:var(--ink);color:#fff;border-color:var(--ink)}
+.side textarea,.side input{width:100%;font:inherit;font-size:12.5px;border:1px solid var(--hair);padding:5px 7px}
+.side textarea{min-height:34px;resize:vertical}
+.fld{margin:6px 0}
+.fld label{display:block;color:var(--faint);font-size:11.5px}
+.msg{font-size:12px;margin-top:6px;min-height:16px;color:var(--done-ink)}
+.msg.err{color:#c62828}
+.ft{color:var(--faint);font-size:11.5px;margin-top:8px}
+details summary{cursor:pointer;color:var(--sub)}
+pre.pt{white-space:pre-wrap;font:12px/1.5 inherit;background:#f6f7f8;padding:6px 8px;max-height:200px;overflow:auto}
+/* 底下一行 */
+.line{height:28px;flex:none;border-top:1px solid var(--hair);display:flex;align-items:center;gap:8px;padding:0 12px;font-size:12px;background:#fafbfc;white-space:nowrap;overflow:hidden}
+.断线 .cv{filter:grayscale(1);opacity:.4}   /* 看板服务断了：整块变灰，底下一行写断了（卷二 7.40） */
+.line i.dotc{width:7px;height:7px;border-radius:50%;flex:none}
+.line .x{margin-left:auto;color:var(--sub);cursor:pointer}
+.line .calm{color:var(--faint)}
+.line .fold{color:var(--k31)}
+.sclose{float:right;margin-left:8px}
+/* 一层结构（11-02 02:4x 用户定，方案第十五节）：同一张格子表三个镜头。第 1 层在干 / 等你的任务一行一个，第 2 层同一批格子折成两行（总览），第 3 层施工区。
+   任务格子里：标题、进度条一行（第 1 层并排，第 2 层折到下一行）；名牌在右上角 */
+.hd2{position:relative;height:var(--h2)}
+.tn2{position:absolute;left:var(--PAD);top:0;height:var(--h1);line-height:var(--h1);font-size:var(--FT);font-weight:600;white-space:nowrap;max-width:var(--tw,none);overflow:hidden}
+.tn2 .tx{display:inline-block}
+.tn2.mq{left:calc(var(--PAD) - 6px);padding-left:6px;-webkit-mask-image:linear-gradient(90deg,transparent,#000 6px,#000 calc(100% - 10px),transparent);mask-image:linear-gradient(90deg,transparent,#000 6px,#000 calc(100% - 10px),transparent)}
+.br2{position:absolute;display:flex;align-items:center;gap:6px;height:var(--h1);left:var(--PAD);top:var(--G);width:calc(var(--bw) - 2*var(--PAD));transition:left .45s cubic-bezier(.3,.7,.2,1),top .45s cubic-bezier(.3,.7,.2,1),width .45s cubic-bezier(.3,.7,.2,1),opacity .25s ease}
+.row1 .tn2{transition:opacity .25s ease}
+.br2 small{font-size:var(--FN);color:var(--sub);font-variant-numeric:tabular-nums;white-space:nowrap}
+.row1 .br2{left:calc(var(--nw) + var(--I));top:0;width:var(--bw1)}
+.hide1{opacity:0;pointer-events:none}
+.sess2{position:absolute;top:0;left:calc(var(--nw) + var(--sx));width:calc(var(--CW) - 2*var(--I));height:var(--h1);line-height:var(--h1);text-align:center;font-size:var(--FP);color:var(--k31);text-decoration:none;opacity:0;pointer-events:none;transition:opacity .2s ease}
+.lv1 .row1:hover .sess2{opacity:1;pointer-events:auto}
+
+.ackln{color:var(--wait-ink)}
+.ackbtn{color:var(--k31);cursor:pointer;font-weight:600}
+.ackbtn:hover{text-decoration:underline}
+.none1{position:absolute;left:22px;top:22px;font-size:12px;color:var(--faint);display:none}
+.lv1 .none1.on{display:block}
+/* 第 1 层常开：选框不走（走起来每秒重画 60 次，测试时小窗合计吃 20% 多 CPU，不走只要 1% 左右；11-02 03:5x 量的）；状态看名牌，总览、施工区照走 */
+.lv1 .claim .cb{display:none}
+/* 名牌层（第 0 层，卷四 6.42–6.43，用户 11-06：「最终只露出每个任务的状态按钮就行」，选乙：以左上角为准）：第 1 层按 − 收成只留名牌的一列；标题、进度条、几/几淡出，底下一行收起；名牌照旧点进会话，悬停提示写任务名 */
+.lv0 .line{gap:5px;padding:0 10px}.lv0 .line>span{display:none}   /* 卷四 6.67（用户：最小一层也恢复底部的圆点）：名牌层底下一行只放圆点 */
+.line .reddot{width:8px;height:8px;border-radius:50%;background:#e5484d;flex:none;cursor:pointer}.line .wake{flex:none;color:var(--k31);font-weight:600;cursor:pointer}.line .wake:hover{text-decoration:underline}.lv0 .row1 .tn2,.lv0 .row1 .br2,.lv0 .row1 .sess2{opacity:0;pointer-events:none}
+.ovt,.sleep{transition:opacity .3s ease,top .45s cubic-bezier(.3,.7,.2,1)}
+.lv1 .ovt,.lv1 .sleep,.lv1 .wa,.lv1 .district{opacity:0;pointer-events:none}
+.noanim *,.noanim .line{transition:none!important}
+/* 原生小窗：顶栏不要了（x − + 是全部按钮），选中格子的名字放底行，施工区花了多少放施工区标题后面 */
+body.nat .tb{display:none}
+.line>span:not(.x):not(.fold){min-width:0;overflow:hidden;text-overflow:ellipsis}
+.line .x{flex:none}
+.lv3 #vp{cursor:grab}.lv3 #vp.grabbing,.lv3 #vp.grabbing *{cursor:grabbing!important}   /* 卷四 6.86：第 3 层空白处手形（格子、名牌、候选照旧用自己的光标），拖着时抓紧 */
+.line .lts{display:flex;gap:10px;flex:none;align-items:center}.line .ltg{display:flex;gap:4px}.line .lt{height:22px;flex:none;border-radius:var(--R2)}.line .lt.on{text-decoration:underline;text-underline-offset:2px}.line .ltx{color:var(--sub)}
+.line .selnm{flex:none;color:var(--ink);font-weight:600}
+/* 原生小窗的小档：只放总览和底下一行 */
+body.mini .tb,body.mini .side{display:none}
+/* 对照变体（分卷三，只在 /tmp 副本里）：A 现版；B1 镜头外不走；B2 亮片交给合成器；B3 一秒 8 步；B4 不走；H 亮片交给原生 */
+.claim.off .cb{display:none}
+html[data-v="B2"] .claim .cb,html[data-v="B4"] .claim .cb,html[data-v="H"] .claim .cb{display:none}
+html[data-v="B3"] .claim .cb{animation-timing-function:steps(96)}
+html[data-v="B3"] .lv1 .claim:not(.off):not(.hide1) .cb{display:inline}
+.cbm{position:absolute;left:calc(-0.5*var(--FW));top:calc(-0.5*var(--FW));right:calc(-0.5*var(--FW));bottom:calc(-0.5*var(--FW));border-radius:calc(var(--R) + 0.5*var(--FW));overflow:hidden;padding:var(--FW);-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;pointer-events:none;z-index:1}
+.wa .cbm{border-radius:calc(var(--R2) + 0.5*var(--FW))}
+.cbm i{position:absolute;left:0;top:0;background:color-mix(in srgb,var(--c) var(--sc),#fff)}
+/* 11-03：不再用圆角圈遮（遮不住时直条子冲出圆角）；圆角、线宽由脚本从选框那条线读、大小用选框格子的最终大小，写进行内样式（--ro、--sw）；直边露出的那段用位移 + 缩放直接画（不靠裁切），四个角是同样圆的弧；切层那 0.6 秒先藏起来 */
+.cbm{overflow:visible;padding:0;-webkit-mask:none;mask:none}
+.cbm i{transform-origin:0 0;will-change:transform}
+.qie .cbm{visibility:hidden}
+.cbm s{position:absolute;box-sizing:border-box;width:var(--ro);height:var(--ro);border:0 solid color-mix(in srgb,var(--c) var(--sc),#fff);opacity:0}
+.cbm s.k0{right:0;top:0;border-top-width:var(--sw);border-right-width:var(--sw);border-top-right-radius:var(--ro)}
+.cbm s.k1{right:0;bottom:0;border-bottom-width:var(--sw);border-right-width:var(--sw);border-bottom-right-radius:var(--ro)}
+.cbm s.k2{left:0;bottom:0;border-bottom-width:var(--sw);border-left-width:var(--sw);border-bottom-left-radius:var(--ro)}
+.cbm s.k3{left:0;top:0;border-top-width:var(--sw);border-left-width:var(--sw);border-top-left-radius:var(--ro)}
+.claim.off .cbm,.claim.wait .cbm,.claim.hide1 .cbm{display:none}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="tb"><img class="logo" src="/图标/qlimen-mark-light.svg" alt=""><b>无限表格</b><span class="nbox" id="nbox" title="选中格子的名字；在聊天里说这个名字，模型就知道是哪一格">（选中格子的名字）</span>
+    <span class="tbr"><span class="spend" id="spend"></span><button class="btn" id="back">‹ 回总览</button><span id="chips"></span><button class="btn dark" id="pipBtn" title="打开原生置顶小窗：浮在所有窗口上面，只放总览">置顶小窗</button></span></div>
+  <div class="body"><div class="vp" id="vp"><div class="cv" id="cv"></div></div><div class="side" id="side"><div class="in" id="sidein"></div></div></div>
+  <div class="line" id="line">读取中……</div>
+</div>
+<script>
+const 参=new URLSearchParams(location.search),数=(k,d)=>{const v=参.get(k);return v==null||v===''?d:+v;};
+// 格子尺寸（11-03 01:4x 用户挑的丙：64×32、块四边各缩 3、圆角 6、标题 13.5、进度条 8 两头圆）；网址参数能临时改
+// 11-03 02:5x 用户又挑了第 1 层的「丙」：标题最多 2 格、四周留白半格、进度条 2 格；总览块里标题最多 3 格；放不下的标题鼠标停上去才滚
+const G=数('g',32),I=数('i',3),CW=2*G,R=数('r',6),R2=Math.max(3,R-2),FW=数('fw',2),FT=数('ft',13.5),FN=数('fn',12),FP=数('fp',11.5),FS=数('fs',13),BH=数('bh',8),BRD=数('br',1),BC=数('bc',2),NMIN=数('nmin',2),PAD=数('pad',12),MC=数('mc',5),NMAX=数('nmax',2),OMAX=数('omax',3),MQ=数('mq',2),MQV=数('mqv',20),M1=数('m1',G/2),SL=数('sl',0.1),SC=数('sc',45),SD=数('sd',12),SG=数('sg',0),SN=数('sn',1);
+(()=>{const d=document.documentElement.style,px=v=>v+'px';[['--G',G],['--CW',CW],['--I',I],['--R',R],['--R2',R2],['--FW',FW],['--FT',FT],['--FN',FN],['--FP',FP],['--FS',FS],['--BH',BH],['--PAD',PAD],['--h1',G-2*I],['--h2',2*G-2*I],['--h3',3*G-2*I],['--bw1',(BC+1)*CW-4*I],['--bw1h',BC*CW-4*I],['--sx',BC*CW+I],['--mcw',MC*CW-2*I]].forEach(([k,v])=>d.setProperty(k,px(v)));d.setProperty('--sc',SC+'%');d.setProperty('--BR',BRD?px(BH/2):'0');})();
+const U=G,COLW=4*CW,COLX=[G,G+5*CW],OVW=数('ov',9);   // 总览 9 格宽（11-03 用户定：格子大了 11 格太宽；两块 4 格并排、中间隔 1 格）；格子 CW×G、从 x=G 起
+// 分卷五（11-07）：施工区从看板的登记来（DATA.施工区们：区号 → 名、任务、配），第 3 层画选中的那一个（区号）。版式照它的 区域.json：
+// 排（横：条目左右一字排开、字段一行一个，卷四 6.65 MV 那样；竖：条目一行一个、字段一列一个）、标签宽、条目宽、行（名、高、类、字段、栏……）。
+// 「横…」这几个名字沿用卷四 6.65：横标格 = 字段名那一条占几格，横镜格 = 一个条目占几格，横行位 = 每个字段沿字段方向从第几格起、占几格（第 0 格是段名）。
+const 区X=G+OVW*CW+2*CW,WA={};let 区号='',竖=false,横标格=2,横镜格=3,横行=[],横行位={_高:1},区超界=[];
+function 区们(){return (DATA&&DATA.施工区们)||{};}
+function 区配(){return (区们()[区号]||{}).配||{};}
+function 区名(){return (区们()[区号]||{}).名||区号;}
+function 条目名(){return 区配().条目||'条';}
+function 条目们(){return QD?(QD[条目名()]||[]):[];}
+function 默认栏(){return (区配().栏||[])[0]||'';}
+function 区W(){return WA[区号]||{x:区X,y:G,w:4*MC*CW,name:''};}
+function 区高(){return 竖?(横排列们.宽||横标格*G):横行位._高*G;}   // 施工区沿竖直方向多高
+function 区任务(){return DATA&&区号?DATA.任务.find(t=>t.施工区==区号):null;}
+function 行配(k){return (区配().行||[]).find(r=>r.名==k)||{};}
+function 行栏(k){return 行配(k).栏||'';}
+function 栏叫(栏){const 别=区配().格子别名||{};return Object.keys(别).find(k=>别[k]==栏)||(栏=='文'?区配().依据名||'文':栏);}   // 编号里的叫法（MV：文→分镜、图片→画面、样片→视频）
+function 长字(f){const r=(区配().行||[]).find(r=>(r.字段||[]).includes(f));return !!r&&r.类=='文字'&&(r.字段||[]).length==1;}   // 就地改时给 6 行高的框
+function 设区(k){const 们=区们();if(!k||!们[k])k=Object.keys(们)[0]||'';const 变=k!==区号;区号=k;const c=区配();
+  竖=c.排=='竖';横标格=c.标签宽||(竖?1:2);横镜格=c.条目宽||3;横行=(c.行||[]).map(r=>[r.名,r.高||1,r]);
+  {let y=1;const o={},限=((们[k]||{}).边界||{}).字段格||0;区超界=[];   // 分卷五 8.9（用户定甲）：登记只限字段那一向占几格，条目随便加；超了只画到边界，后面的行不画、顶上写出来
+   横行=横行.filter(([n,h])=>{if(区超界.length||(限&&y+h>限)){区超界.push(n);return false;}o[n]={y,h};y+=h;return true;});o._高=y;横行位=o;}
+  Object.keys(WA).forEach(x=>{if(!们[x])delete WA[x];});Object.entries(们).forEach(([x,v])=>{WA[x]=WA[x]||{x:区X,y:G,w:4*MC*CW};WA[x].name=(v.配||{}).标题||v.名||x;});
+  if(变){QD=null;QDREV=-1;横排列们.键=null;横排虚.范='';}return 变;}
+let 红点分=数('rd',10);   // 卷四 6.67（用户：10 分钟改了没叫醒，左下角红点）
+const 色=w=>({Claude:'claude',K31:'k31',K3:'k31',K28:'k31',flash:'flash',Codex:'codex'})[w]||'other';
+const 施工家=w=>w=='Claude'||w=='Codex';   // 会话自己在干的写「施工中」，派工账本里的工人写「派工中」（接入 Codex C4）
+let DATA=null,QD=null,QDREV=-1,MAIN={open:new Set()},cam={x:0,y:0,s:1},homeCam={x:0,y:0,s:1},WORK=[],SIDE=null,AGENT=null,SELC=null,断=0;   // 断：连着几次问不到看板服务（卷二 7.40）
+const $=id=>document.getElementById(id);
+function 底格图(){const r=Math.max(2,R-2);return 'url("data:image/svg+xml,'+encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' width='"+CW+"' height='"+G+"'><rect x='"+I+"' y='"+I+"' width='"+(CW-2*I)+"' height='"+(G-2*I)+"' rx='"+r+"' fill='#f8f9fa'/></svg>")+'")';}
+const cv=$('cv');cv.style.backgroundImage=底格图();const vp=$('vp'),side=$('side'),sidein=$('sidein'),line=$('line'),nbox=$('nbox');
+const NATIVE=!!window.BAN_NATIVE;let MINI=false,LV=NATIVE?1:2;
+// 11-03 起默认 B2（亮片交给合成器）；?v=A 是旧的 SVG 亮片
+const V=(new URLSearchParams(location.search).get('v')||'B2').toUpperCase();document.documentElement.dataset.v=V;
+// 镜头外不走：算镜头（窗口里看得见的那块画布）和每个选框交不交；不交的、第 1 层藏起来的、不在这一层的，挂 off（亮片不画、不走）
+function 镜头(){if(V==='A')return;const s=cam.s||1,x0=cam.x,y0=cam.y,x1=x0+vp.clientWidth/s,y1=y0+vp.clientHeight/s;
+  cv.querySelectorAll('.claim').forEach(c=>{const wa=c.closest('.wa'),ox=wa?区W().x:0,oy=wa?区W().y:0;
+    const l=ox+parseFloat(c.style.left),t=oy+parseFloat(c.style.top),w=parseFloat(c.style.width),h=parseFloat(c.style.height);
+    const off=c.classList.contains('hide1')||l>x1||l+w<x0||t>y1||t+h<y0||(LV<3&&!!wa)||(LV==3&&!wa);
+    c.classList.toggle('off',off);
+    if(V==='B2'&&!off&&!c.classList.contains('wait'))亮片(c,w,h);});
+  粘标();if(V==='H')报框();}
+// B2：一段长 10% 周长的亮片沿框顺时针匀速走一圈（12 秒），四条边各一根条子，只动 transform（交给合成器，不用每帧重画网页）。
+// 条子在边外（往外挪 12px）时看不见，换位置都在看不见的时候；不用 steps（WebKit 见了 steps 就不交给合成器）
+function 亮片(c,w,h){let m=c.querySelector('.cbm');const f=c.querySelector('rect.cf');if(!f)return;
+  // 11-03：亮片那一圈就是选框那条线——圆角、线宽从 rect.cf 读（切层不变），大小用选框所在格子的最终大小（选框铺满这个格子；变形途中量到的是中间尺寸，04:2x 粘连就是这么来的）
+  // 每条直边上露出的那一段 = [头-L, 头] ∩ [0, 边长]，起点和长度都分段直线，用「位移 + 缩放」直接画，不靠裁切；四个角是同样圆的弧，亮片经过时淡入淡出。只动位移、缩放、透明度（合成器）
+  if(!m){m=document.createElement('div');m.className='cbm';m.innerHTML=('<i></i>'.repeat(4)+'<s class="k0"></s><s class="k1"></s><s class="k2"></s><s class="k3"></s>').repeat(SN);c.appendChild(m);}
+  if(!m._rs){const cs=getComputedStyle(f),rr=parseFloat(cs.rx);m._rs=[isNaN(rr)?(parseFloat(cs.ry)||0):rr,parseFloat(cs.strokeWidth)||0];}
+  const [r0,sw]=m._rs,rx=Math.max(0,Math.min(r0,w/2,h/2)),k=[w,h,rx,sw].join(',');if(m._k===k)return;m._k=k;
+  const Ro=rx+sw/2,W=w+sw,H=h+sw;   // 线骑在框边上画：外沿往外半个线宽
+  m.style.cssText='left:'+(-sw/2)+'px;top:'+(-sw/2)+'px;width:'+W+'px;height:'+H+'px;right:auto;bottom:auto;--ro:'+Ro+'px;--sw:'+sw+'px';
+  const nT=Math.max(0,W-2*Ro),nS=Math.max(0,H-2*Ro),A=Math.PI*rx/2,P=2*nT+2*nS+4*A,L=SL*P,T=SD*1000;
+  // 四条边：a 从一圈哪里开始，n 长，(x0,y0) 起点，方向
+  const 边=[{a:0,n:nT,x0:Ro,y0:0,dx:1,dy:0},{a:nT+A,n:nS,x0:W-sw,y0:Ro,dx:0,dy:1},{a:nT+nS+2*A,n:nT,x0:W-Ro,y0:H-sw,dx:-1,dy:0},{a:2*nT+nS+3*A,n:nS,x0:0,y0:H-Ro,dx:0,dy:-1}];
+  const 角=[nT,nT+nS+A,2*nT+nS+2*A,2*nT+2*nS+3*A];   // 右上、右下、左下、左上：圆弧从一圈的哪里开始
+  const 模=x=>((x%P)+P)%P,处=(a,点)=>[...new Set([0,P,...点.map(x=>模(x-a)+a).map(模)])].sort((x,y)=>x-y);
+  [...m.children].forEach((el,ii)=>{const q=ii%8,段=Math.floor(ii/8);let kf;
+    if(q<4){const b=边[q],横=b.dx!=0;el.style.width=(横?L:sw)+'px';el.style.height=(横?sw:L)+'px';
+      if(SG)el.style.background='linear-gradient('+['to right','to bottom','to left','to top'][q]+',transparent,color-mix(in srgb,var(--c) '+SC+'%,#fff) 70%,#fff)';
+      // 头走到这条边上第 u 处时：露出 [max(0,u-L), min(n,u)]；u 不在 (0, n+L) 里就一点不露（长度 0）
+      const 段值=s=>{const u=模(s-b.a);if(u>=b.n+L)return [b.n*(P-u)/Math.max(1e-6,P-b.n-L),0];const 起=Math.max(0,u-L),止=Math.min(b.n,u);return [起,Math.max(0,止-起)];};
+      const 变=([起,长])=>{const k=Math.max(0,长)/L;if(b.dx==1)return `translate(${b.x0+起}px,${b.y0}px) scale(${k},1)`;if(b.dx==-1)return `translate(${b.x0-起-长}px,${b.y0}px) scale(${k},1)`;
+        if(b.dy==1)return `translate(${b.x0}px,${b.y0+起}px) scale(1,${k})`;return `translate(${b.x0}px,${b.y0-起-长}px) scale(1,${k})`;};
+      kf=b.n>0?处(b.a,[b.a,b.a+Math.min(L,b.n),b.a+Math.max(L,b.n),b.a+b.n+L]).map(s=>({offset:s/P,transform:变(段值(s))})):[{offset:0,transform:'scale(0,0)'},{offset:1,transform:'scale(0,0)'}];}
+    else{const c0=角[q-4],亮=s=>{const x=模(s-c0);return Math.max(0,Math.min(1,x/Math.max(A,.01),(L+A-x)/Math.max(A,.01)));};
+      kf=处(c0,[c0,c0+A,c0+L,c0+L+A]).map(s=>({offset:s/P,opacity:亮(s)}));}
+    kf.forEach((f,j)=>{if(j&&f.offset<kf[j-1].offset)f.offset=kf[j-1].offset;});
+    kf=kf.filter((f,j)=>j==kf.length-1||f.offset<kf[j+1].offset);   // 同一处只留最后一帧（11-03：三帧挤在一处时，小窗里真跑像是取了第一帧）
+    if(el._a)el._a.cancel();el._a=el.animate(kf,{duration:T,iterations:Infinity,easing:'linear'});el._a.startTime=段*T/SN;});}
+// H：把看得见、在走的选框位置报给小窗（窗口里的坐标），小窗在网页上面叠一层 Core Animation 画亮片；切层那 0.6 秒先撤掉，停稳了再报
+function 报框(){clearTimeout(报框.t);
+  const go=()=>{const r=[];cv.querySelectorAll('.claim:not(.off):not(.wait)').forEach(c=>{const b=c.getBoundingClientRect();
+      r.push([Math.round(b.left*2)/2,Math.round(b.top*2)/2,Math.round(b.width*2)/2,Math.round(b.height*2)/2,getComputedStyle(c).getPropertyValue('--c').trim(),c.closest('.wa')?4:6]);});
+    const k=JSON.stringify(r);if(k!==报框.k){报框.k=k;原生({框:r});}};
+  const 过=Date.now()-去层.时;if(过<650){if(报框.k!=='[]'){报框.k='[]';原生({框:[]});}报框.t=setTimeout(go,650-过);}else go();}   // 在原生小窗里（工具/小窗 注入 BAN_NATIVE）：LV 是第几层，小窗一开是第 1 层；浏览器里只有 2、3 层
+function 原生(m){try{window.webkit.messageHandlers.ban.postMessage(m);}catch(e){}}
+const 净=s=>String(s==null?'':s).replace(/\[(自动|需用户|自动\+需用户|需用户→自动|自动·需用户点允许)\]\s*/g,'');
+const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c]);
+async function api(path,body){const r=await fetch(path,body?{method:'POST',headers:{'Content-Type':'application/json','X-Ban':'1'},body:JSON.stringify(body)}:{cache:'no-store'});
+  const j=await r.json().catch(()=>({}));if(!r.ok){const e=new Error(j.错||('出错了 '+r.status));e.status=r.status;e.body=j;throw e;}return j;}
+const bar=a=>'<div class="sbar">'+a.map(s=>'<i class="'+s+'"></i>').join('')+'</div>';
+const 分钟=t=>t?Math.max(0,Math.round((Date.now()/1000-t)/60)):null;
+// 名牌占几格：按字宽算，最少 2 格（格子 40 宽，块 = 格数×40−4）
+function 量字(s){const c=量字.c||(量字.c=document.createElement('canvas').getContext('2d'));c.font='600 11px -apple-system,"PingFang SC","Hiragino Sans GB","Helvetica Neue",Arial,sans-serif';return c.measureText(s).width;}
+function 名牌格(s){return Math.max(2,Math.ceil((量字(s)+14)/CW));}
+function 量字10(s){const c=量字10.c||(量字10.c=document.createElement('canvas').getContext('2d'));c.font='600 '+FP+'px -apple-system,"PingFang SC","Hiragino Sans GB","Helvetica Neue",Arial,sans-serif';return c.measureText(s).width;}
+function 量标题(s){const c=量标题.c||(量标题.c=document.createElement('canvas').getContext('2d'));c.font='600 '+FT+'px -apple-system,"PingFang SC","Hiragino Sans GB","Helvetica Neue",Arial,sans-serif';return c.measureText(s).width;}
+function 内格(s){return Math.max(1,Math.ceil((量字10(s)+12)/CW));}   // 名牌占几格：两个字 1 格
+// 只写状态（02:2x 用户的建议）：施工 / 等你；总览里撞了只挂一块「撞格」，谁撞了进施工区看
+function 只写状态(tags,总览){if(总览&&tags.some(x=>x.hit))return [{字:'撞格',hit:1,c:'other'}];return tags.map(x=>x.hit||x.续?x:{...x,字:(x.收?'收工':/等你/.test(x.字)?'等你':x.跨?'跨区':'施工')+(x.疑?'?':'')});}   // 问号：回复说的和插件看到的对不上（卷二 7.10）
+// 任务格子宽跟着标题走（02:4x 用户：标题过长就加宽，不用刻意整齐）：标题格 + 名牌格（没名牌也留 1 格，开灯关灯不跳），至少 4 格
+const 标题格=t=>Math.max(NMIN,Math.ceil((量标题(t.名)+2*PAD)/CW)),名牌数=t=>t.灯.length?只写状态(灯标(t.灯,t.撞),1).reduce((n,x)=>n+内格(x.字),0):1,块格0=t=>Math.min(OVW,Math.max(4,Math.min(标题格(t),OMAX||99)+名牌数(t))),标宽=(t,r1,L1)=>r1?L1.N*CW+I-PAD-8:t.灯.length?(块格(t)-名牌数(t))*CW-2*PAD:块格(t)*CW-2*I-2*PAD;   // 标题看得见的宽：第 1 层到进度条前；总览有名牌的到名牌前，没有的到块右边
+// 卷四 6.26 乙（用户 11-05：橙框是谁在负责，任务自己有颜色；熄灯只摘掉负责人的框，不把任务撤下第 1 层，灰 = 暂时不干、能接着干）：
+// 没人亮灯、还有活（或钉在第 1 层）的任务挂一块灰的「待续」，点进本区会话
+const 名牌们=t=>t.灯.length?只写状态(灯标(t.灯,t.撞),1):t.待续?[{字:'待续',c:'xu',续:1,链:t.会话链接||'',说:t.待续.说||''}]:[];
+const 注=(t,多)=>[t.续&&t.说,t.跨,多&&!t.跨&&!t.续&&t.说,t.后台&&'回复说等你，后台还在跑',t.疑&&'对不上：'+t.疑+'（照插件看到的亮）'].filter(Boolean).join('；');   // 多：不止一块名牌时写上各自在干什么（卷四 6.23）
+function claimHTML(tags,占格,链){const 多=tags.filter(t=>!t.hit).length>1;return '<svg aria-hidden="true"><rect class="cf" pathLength="100"/><rect class="cb" pathLength="100"/></svg>'+(tags.length?'<span class="ctags">'+tags.map((t,i)=>{const 到=t.hit?'':t.链||(i==tags.length-1&&链)||'',连=!!到,签=连?'a':'span',n=注(t,多);return '<'+签+' class="ctag'+(t.hit?' hit':'')+(连?' go2':'')+'"'+(连?' href="'+esc(到)+'" title="'+esc(n?n+'；点一下打开那个会话':'打开在干这个任务的会话')+'"':n?' title="'+esc(n)+'"':'')+' style="--c:var(--'+t.c+')'+';width:'+(内格(t.字)*CW-2*I)+'px'+'">'+esc(t.字)+''+'</'+签+'>';}).join('')+'</span>':'');}
+// 名牌：一个会话一块，并排挂（卷四 6.23，用户 11-04 06:0x：跨区是新增一个干活的，不替换原来的；名牌各对各的会话，点进各自的会话）；
+// 没有会话号的（派工、MV 出图）照旧一个谁一块。同一格两个谁认领（撞格）前面多一块红的。不止一块时只写名字，免得比格子还宽（撞的是哪格写在展开的第一行）
+// 一块：有在干的灯就是「施工中 / 派工中」，只剩等你的灯就是「等你」（交付了，名牌能点「知道了」）；在干的全是跨区施工就是「跨区」，排在本区后面。
+// 卷四 6.24 乙（用户 11-05 01:0x）：回复写了【等你】、后台又还在跑的（灯带「要你」）也写「等你」，亮片照走——亮片管在不在跑，名牌管球在谁手里
+// 卷四 6.77（用户 11-06：「按一个来算就行，也不用加红点，只要最上层的状态就行，我这一层的价值是判断状态，不用告诉我到底是在派工、还是在跨区，最上面那个是在施工就行，其他的可以收起来」）：
+// 名牌层一个任务只挂一块：施工（含派工、跨区、MV 出图）> 等你 > 收工 > 待续，颜色是那盏灯的谁；跨区来的那块点进这个任务自己的会话。第 1 层、总览、第 3 层名牌条照旧一个会话一块（6.23）
+function 一块(t){if(!t.灯.length)return 名牌们(t);const 牌=只写状态(灯标(t.灯,null)),级=x=>/^(施工|跨区)/.test(x.字)?0:/^等你/.test(x.字)?1:/^收工/.test(x.字)?2:3,顶=牌.slice().sort((a,b)=>级(a)-级(b))[0];return 顶?[{...顶,字:顶.字.replace(/^跨区/,'施工'),链:顶.跨?(t.会话链接||顶.链):顶.链}]:[];}
+function 灯标(灯们,撞){const g={};灯们.forEach(l=>{const k=l.谁+(l.会话?'|'+l.会话:''),x=g[k]=g[k]||{谁:l.谁,会:l.会话||'',干:0,跨:0,n:0,候:0,收:0,链:'',说:''};if(!x.链&&l.链)x.链=l.链;x.n++;if(l.收工&&l.态=='等')x.收++;if(l.态=='等'||l.要你)x.候++;if(l.要你&&l.态!='等')x.后台=1;if(l.态!='等'){x.干++;if(!x.说)x.说=l.说||'';if(/^跨区施工/.test(l.说||'')){x.跨++;x.从=l.说;}}if(l.对不上)x.疑=l.对不上;});
+  const 跨了=x=>x.干&&x.跨==x.干?1:0,ks=Object.keys(g).sort((a,b)=>跨了(g[a])-跨了(g[b])),撞了=!!(撞&&撞.length),短=撞了||ks.length>1;
+  return (撞了?[{字:'撞格',hit:1,c:'other'}]:[]).concat(ks.map(k=>{const x=g[k],w=x.谁,干=x.干;const 等=x.候==x.n;return {字:w+(短?(等?'·等你':''):' '+(等?'等你':(施工家(w)?'施工中':'派工中')))+(!等&&干>1?' ×'+干:''),c:色(w),ack:干?null:w,跨:跨了(x)?x.从:null,疑:x.疑||null,链:x.链,说:x.说,会:x.会,谁:w,后台:等&&x.后台?1:0,收:x.收&&x.收==x.n?1:0};}));}
+function 灯句(l){const m=分钟(l.开始);
+  if(l.态=='等')return l.谁+' 等你'+(l.说?'：'+l.说:'')+(m!=null?' · '+m+' 分钟前'+(l.没续期?'开工，没收工':''):'');
+  return l.谁+(施工家(l.谁)?' 施工中':' 派工中')+(l.说?'：'+l.说:'')+(m!=null?' · '+m+' 分钟':'')+(l.预计?'（预计 '+l.预计+'）':'');}
+const 全等=灯们=>灯们.length>0&&灯们.every(l=>l.态=='等');
+const 主灯=t=>{const ls=(t&&t.灯)||[];return ls.find(l=>l.态!='等'&&!/^跨区施工/.test(l.说||''))||ls.find(l=>l.态!='等')||ls[0]||null;};   // 卷四 6.23
+const 另有=(t,l)=>{const 别=t&&l?t.灯.filter(x=>!(x.谁==l.谁&&x.开始==l.开始&&x.会话==l.会话)):[];return 别.length?' · 另有 '+别.length+' 处'+(别.every(x=>x.态!='等'&&/^跨区施工/.test(x.说||''))?'跨区':''):'';};   // 底下一行、悬停：这个任务还有几盏别的灯
+// ---------- 总览 ----------
+function 可见(t){const b=布()[t.键]||{};if(b.档)return !!t.灯.length||!!b.常驻;return b.显||!(t.休眠||t.做完)||t.灯.length||!!t.待续;}   // 你收起（归档）的不显示，有人开灯照样出来
+// ---------- 手动调格子（11-04 卷二 7.7，用户 01:2x「1选甲」：直接拖）：布局 = {键:{x,y,w,h,折,档,显}}，x 第几格、y 第几行，存在看板数据目录 布局.json ----------
+const 布=()=>(DATA&&DATA.布局)||{},常开=t=>{const b=布()[t.键];return !!(b&&!b.折&&b.h>2);};   // 拉高过 2 行 = 常驻展开
+function 块格(t){const b=布()[t.键];if(b&&b.折)return 1;if(b&&b.w)return Math.min(OVW,Math.max(2,b.w));return 块格0(t);}
+// 展开里的格子（11-01 二期补三：乙版的分格 + 戊的圆角地基）。只留步骤（11-03 起最后那行「会话 ↗ | 文件夹 ↗」去掉了：进会话点名牌、开文件夹点标题后面的小箭头）：谁在干看名牌，在干什么看第一层浮条
+// （22:0x 用户定：上半部分在小地盘价值不大，也跟下面重复）。每一步 = 编号 1 格 + 名字 3 格（格子 40×20，拆开是两个 20×20 方格），
+// 编号格的颜色就是状态，等你的整行黄；名字放不下折成两行，不截。
+const 开=o=>' href="#" data-open="'+esc(JSON.stringify(o))+'"';   // 交给看板服务用访达打开（只许开这个任务目录里的）
+function cells(t,宽){宽=宽||8;
+  const out=[];
+  const 行=(cls,h,html,o)=>out.push(Object.assign({cls,h,html},o||{}));
+  if(t.读不出)行('f wrap',2,esc(t.读不出));
+  else{
+    const 完=t.当前.filter(s=>s.态=='d').length;
+    if(完){行('d',1,'✓',{w:2});行('f',1,'已完成 '+完,{w:宽-2});}
+    let shown=0,rest=0;
+    t.当前.forEach(s=>{if(s.态=='d')return;if(shown>=6){rest++;return;}shown++;
+      const tip=' title="'+esc(s.id+' '+s.全)+'"',等=s.态=='w'||s.态=='o',字=s.名+(s.态=='p'?'（在做）':'');
+      const 长=!等&&字宽(字)*FS/11.5>(宽-2)*G-10,h=等||长?2:1,折=长?' wrap':'',step=等?s.id:null;
+      行(s.态+折,h,esc(s.id),{w:2,step,tip});
+      行((等?s.态:'')+折,h,esc(字)+(等?'<small>'+esc(净(s.全))+'</small>':''),{w:宽-2,step,tip});});
+    if(rest)行('f',1,'还有 '+rest+' 步');}
+  // 交付了在等你看的：看过了点「知道了」，框和名牌消失（11-02 04:4x 起不在名牌上点：名牌在格子里，一点任务就误点掉了）
+  [...new Set((t.灯||[]).filter(l=>l.态=='等').map(l=>l.谁))].forEach(谁=>行('f',1,'<span class="ackln"><span class="ackbtn" data-ack="'+esc(谁)+'" data-cl="'+esc(t.键)+'" title="看过了：摘掉它的框和名牌；还有活的变灰留在第 1 层">知道了</span> · '+esc(谁)+(t.灯.filter(l=>l.态=='等'&&l.谁==谁).every(l=>l.收工)?' 收工了，等你看':' 交付了，等你看')+'</span>',{w:宽}));
+  // 卷四 6.27：第 1 层上的（亮着的、待续的）能钉住，灭了灯、没活了也留着；待续的能放下，本区会话再动、TODO 再改才回来
+  if((t.灯.length||t.待续)&&t.模式!='零活'){const 钉=!!(布()[t.键]||{}).常驻,k=esc(t.键);行('f',1,'<span class="ackln">'+(钉?'<span class="ackbtn" data-pin="0" data-cl="'+k+'" title="灭了灯、没活了就回总览">不钉了</span> · 钉在第 1 层':'<span class="ackbtn" data-pin="1" data-cl="'+k+'" title="灭了灯、没活了也一直留在第 1 层（像每天盯跑这种天天做的）">钉在第 1 层</span>'+(t.待续&&!t.灯.length?' · <span class="ackbtn" data-down="1" data-cl="'+k+'" title="从第 1 层拿下来；本区会话再动、TODO 再改就回来">放下</span>':''))+'</span>',{w:宽});}
+  return out;}
+// 展开占几行：凑满 8 格算一行，取这一行里最高的格
+function 行数(cs,宽){宽=宽||8;let rows=0,w=0,h=0;cs.forEach(c=>{w+=c.w||宽;h=Math.max(h,c.h);if(w>=宽){rows+=h;w=0;h=0;}});return rows+(w?h:0);}
+const 字宽=s=>[...String(s)].reduce((a,c)=>a+(c>'\u2e80'?12:7),0);
+const 头高=t=>2*U;   // 标题一行放得下（格子宽跟着标题走）
+function regionH(t,open){const h0=头高(t),宽=2*块格(t);if(!open||t.施工区)return h0;return h0+行数(cells(t,宽),宽)*U;}
+// ---------- 总览和第 1 层（一层结构，11-02 02:4x 用户定）：同一批任务格子两种排法，切层时原地变形，不重建 ----------
+// 第 2 层（总览）：每块宽 = 块格（标题格 + 名牌格），按网格往左上角塞：每列记已经占到第几行，挑最低、最靠左放得下的地方；块右边、下边各空 1 格。
+// 第 0 行留给标题（原生小窗里左上角两格是 x − +）
+function 排总览(ts,open){const B=布(),占=[],pos={};   // 每块占自己加右边一格、下边一行的缝（到最右边不留）
+  const 闲=(x,y,w,h)=>{for(let j=y;j<=y+h;j++){const r=占[j];if(r)for(let i=x;i<Math.min(OVW,x+w+1);i++)if(r[i])return false;}return true;};
+  const 占上=(x,y,w,h)=>{for(let j=y;j<=y+h;j++){const r=占[j]||(占[j]=new Uint8Array(OVW));for(let i=x;i<Math.min(OVW,x+w+1);i++)r[i]=1;}};
+  const 尺=t=>{const b=B[t.键]||{},w=块格(t);if(b.折)return [1,1];const 开=open.has(t.键)&&!t.施工区,自=regionH(t,开||常开(t))/U;return [w,b.h&&!开?Math.max(1,b.h):Math.max(b.h||0,自)];};
+  const 放=(t,x,y)=>{const [w,h]=尺(t);pos[t.键]={x:G+x*CW,y:y*U,w:w*CW,h:h*U,gx:x,gy:y,gw:w,gh:h};占上(x,y,w,h);};
+  ts.filter(t=>B[t.键]&&B[t.键].x!=null).sort((p,q)=>B[p.键].y-B[q.键].y||B[p.键].x-B[q.键].x).forEach(t=>{const b=B[t.键],[w,h]=尺(t),x=Math.max(0,Math.min(OVW-w,b.x));let y=Math.max(1,b.y);while(!闲(x,y,w,h))y++;放(t,x,y);});
+  ts.forEach(t=>{if(pos[t.键])return;const [w,h]=尺(t);for(let y=1;;y++)for(let x=0;x+w<=OVW;x++)if(闲(x,y,w,h)){放(t,x,y);return;}});
+  return {pos,sleepY:Math.max(1,占.length)*U};}
+// 第 1 层：在干 / 等你的任务一行一个：标题（按最长那条定格数，进度条对齐）· 进度条 4 格 · 几/几 1 格 · 名牌（按名牌最多那行定格数）；右边再留 1 格给悬停的「会话 ↗」
+function 排第一层(ts,L){const act=ts.filter(t=>t.灯.length||t.待续).sort((a,b)=>{const p=L&&L.pos[a.键],q=L&&L.pos[b.键];return p&&q?(p.gy-q.gy)||(p.gx-q.gx):0;}),   // 02:1x 用户：「第1层跟」总览的排序
+  N=Math.max(NMIN,Math.min(NMAX||99,Math.max(0,...act.map(标题格)))),T=LV==0?1:Math.max(1,...act.map(名牌数)),pos={};   // 名牌层一个任务一块，列只 1 格（6.77）
+  act.forEach((t,i)=>{pos[t.键]={x:G,y:(1+i)*U,w:(LV==0?T:N+BC+1+T)*CW,h:U};});return {pos,N,T,rows:act.length};}
+// 底行（卷四 6.35，用户 11-05：「太窄了，跟以格子为本的基础规则不一致；拖出来不知道是哪个」，6.34「照推荐做」）：
+// 分休眠 / 做完 / 收起三段，段名占 2 格；每个任务一块、占整格、写全名（宽度照名字算格数），颜色还是原来的意思：休眠灰、做完浅绿、收起空心；
+// 做完那段默认折着，点段名展开 / 折起（记在这台电脑的浏览器里）；拖出来的影子就是那一块、带名字
+function 量字(s,f){const c=量字.c||(量字.c=document.createElement('canvas').getContext('2d'));c.font=f;return c.measureText(s).width;}
+const 底字='500 12.5px -apple-system,"PingFang SC","Hiragino Sans GB","Helvetica Neue",Arial,sans-serif';
+let 做完开=(()=>{try{return localStorage.getItem('ban.做完开')=='1';}catch(e){return false;}})();
+function 底块(t,cls){const w=Math.min(OVW,Math.max(1,Math.ceil((量字(t.名,底字)+2*PAD+2*I+2)/CW)));
+  return '<div class="sb '+cls+'" data-k="'+esc(t.键)+'" style="grid-column:span '+w+'" title="'+esc(t.名+' '+(t.完成||0)+'/'+(t.总数||0))+'（拖到上面就放回总览）"><span>'+esc(t.名)+'</span></div>';}
+function 睡HTML(睡){const 档=t=>!!(布()[t.键]||{}).档;
+  const 段=[['休眠',睡.filter(t=>!t.做完&&!档(t)),''],['做完',睡.filter(t=>t.做完&&!档(t)),'dn'],['收起',睡.filter(档),'ar']].filter(g=>g[1].length);
+  return '<div class="sg" style="grid-template-columns:repeat('+OVW+','+CW+'px);grid-auto-rows:'+U+'px">'+段.map(([名,ts,cls])=>{const 折=名=='做完'&&!做完开;
+    return '<div class="sh">'+(名=='做完'?'<span class="shz" data-fold-done title="'+(折?'展开做完的':'折起做完的')+'">'+名+' '+ts.length+' · '+(折?'展开':'折起')+'</span>':名+' '+ts.length)+'</div>'+(折?'':ts.map(t=>底块(t,cls)).join(''));}).join('')+'</div>';}
+function 块HTML(t,open){const b=布()[t.键];
+  if(b&&b.折){const r=t.总数?Math.round(100*(t.完成||0)/t.总数):0;return '<div class="fd" title="'+esc(t.名+' '+(t.完成||0)+'/'+(t.总数||0))+'（点一下放回原来大小）"><b style="width:'+r+'%"></b></div>';}
+  return headHTML(t)+(open?stepsHTML(t,MAIN.open.has(t.键)||!(b&&b.h>2)?null:b.h-2):'')+'<i class="grip" data-grip title="拖这里改大小：拉高就常驻展开，拉到 1 格就折起来"></i>';}
+// 零活（没有任务目录的会话：查询、小任务，卷二 7.10）：进度条占位，标题是会话第一句话，没有文件夹可开
+function headHTML(t){return '<div class="hd2"><div class="tn2" '+(t.占位?'title="'+esc(t.名)+'（零活：没有任务目录）"':'title="按着 ⌘ 点：在访达里打开 '+esc(t.键)+'" data-dir="'+esc(JSON.stringify({任务:t.键}))+'"')+'><span class="tx">'+esc(t.名)+'</span></div><div class="br2">'+(t.占位?'<div class="sbar ph" title="零活：没有 TODO，进度条占位"></div><small>零活</small>':bar(t.读不出?[]:t.段)+'<small'+(t.收工疑?' class="qy" title="'+esc('收工时还有 '+t.收工疑.步.length+' 步要你做的没勾：'+t.收工疑.步.join('、')+'（TODO 一改就消失）')+'"':'')+'>'+(t.读不出?'?':t.完成+'/'+t.总数+(t.收工疑?'?':''))+'</small>')+'</div></div>';}
+// 拉高过的块常驻展开：只放得下 R 行就只画整行，放不下的最后一行写「还有 N 步」（不把两行高的步骤切成半截）
+function 截步(cs,宽,R){if(R==null)return cs;const 行们=[];let 行=[],w=0,h=0;cs.forEach(c=>{行.push(c);w+=c.w||宽;h=Math.max(h,c.h);if(w>=宽){行们.push({cs:行,h});行=[];w=0;h=0;}});if(行.length)行们.push({cs:行,h});
+  let 用=0,取=0;while(取<行们.length&&用+行们[取].h<=R)用+=行们[取++].h;if(取==行们.length)return cs;
+  while(取>0&&用+1>R)用-=行们[--取].h;const 余=行们.slice(取).reduce((n,r)=>n+r.cs.filter(c=>c.step!==undefined&&(c.w||宽)==2).length,0);
+  return 行们.slice(0,取).flatMap(r=>r.cs).concat([{cls:'f',h:1,w:宽,html:(余?'还有 '+余+' 步':'还有一行')+' · 点一下全展开'}]);}
+function stepsHTML(t,R){const 宽=2*块格(t);return '<div class="steps" style="grid-template-columns:repeat('+宽+','+(G-2*I)+'px)">'+截步(cells(t,宽),宽,R).map(c=>'<div class="st '+c.cls+'"'+(c.tip||'')+(c.step!=null?' data-step="'+esc(t.键)+'|'+esc(c.step)+'"':'')+' style="grid-column:span '+(c.w||宽)+';height:'+(c.h*U-2*I)+'px">'+c.html+'</div>').join('')+'</div>';}
+// 第 1 层悬停一行时底下一行写的那句（名牌层没有底下一行，同一句写进名牌的悬停提示，卷四 6.43）
+function 悬停话(t,x0){const l0=主灯(t);if(!l0&&!t.待续)return '';const x=x0||名牌们(t).find(y=>!y.hit)||{},l=x.会!=null&&t.灯.find(y=>(y.会话||'')==x.会&&y.谁==x.谁)||l0;return 状态话(t,x.字,l)+(l?另有(t,l):'');}
+// 卷四 6.71（用户 11-06：「状态显示也不太一样」）：底下一行和名牌同一套字，状态写在长句前面
+function 状态话(t,字,灯){const l=灯||主灯(t);if(!l)return t.名+' · 待续'+(t.待续&&t.待续.说?' · '+t.待续.说:'');const m=分钟(l.开始),候=l.态=='等'||!!l.要你,话=候&&t.现在&&t.现在.length?t.现在[0]:l.说;return t.名+' · '+l.谁+' '+(字||(候?'等你':'施工'))+(候&&l.要你?'（后台在跑）':'')+(m!=null?' · '+m+(候?' 分钟前':' 分钟'):'')+(话?' · '+话:'');}
+// 卷四 6.71 甲（用户 11-06：「我如果用第三层，就没法看到第一层的状态并跳转会话了」）：第 3 层底下一行放第 1 层的名牌条，挑法、排法同第 1 层（有灯或待续，照总览的位置）
+function 一层们(){if(!DATA)return [];const L=排过&&排过[0];return DATA.任务.filter(t=>t.灯.length||t.待续).sort((a,b)=>{const p=L&&L.pos[a.键],q=L&&L.pos[b.键];return p&&q?(p.gy-q.gy)||(p.gx-q.gx):0;});}
+function 名牌条(){return '<span class="lts">'+一层们().map(t=>'<span class="ltg" data-t="'+esc(t.键)+'">'+名牌们(t).filter(x=>!x.hit).map(x=>{const 到=x.链||t.会话链接||'',签=到?'a':'span';return '<'+签+' class="ctag lt'+(到?' go2':'')+'" data-t="'+esc(t.键)+'" data-s="'+esc(x.会||'')+'" data-w="'+esc(x.谁||'')+'"'+(到?' href="'+esc(到)+'"':'')+' style="--c:var(--'+x.c+');width:'+(内格(x.字)*CW-2*I)+'px">'+esc(x.字)+'</'+签+'>';}).join('')+'</span>').join('')+'</span>';}
+function 名牌提示(ov,t){const 话=LV==0?悬停话(t,一块(t)[0]):'';ov.querySelectorAll('.ctag').forEach(a=>{if(a.dataset.t0==null)a.dataset.t0=a.title||'';const v=LV==0&&话?话+(a.tagName=='A'?'；点一下打开那个会话':''):a.dataset.t0;if(a.title!==v)a.title=v;});}
+let 排过=null;
+function renderOverview(root,st,只同步){if(拖.on){拖.欠=1;return;}const 起=performance.now();try{return VT?总览虚(root,st,只同步):总览原(root,st);}finally{记计(performance.now()-起);}}
+function 总览原(root,st){
+  if(!DATA)return;
+  // 在干 / 等你的排前面：按 + 从第 1 层放大时，它们原地长成两行的格子
+  const ts=DATA.任务.filter(可见).slice().sort((a,b)=>(b.灯.length||b.待续?1:0)-(a.灯.length||a.待续?1:0)),L=排总览(ts,st.open),L1=排第一层(ts,L);排过=[L,L1];
+  if(!root.querySelector('.sleep'))root.insertAdjacentHTML('beforeend','<div class="district ovt" style="left:'+G+'px;top:'+(NATIVE?U-M1+1:1)+'px">总览</div><div class="sleep"></div><div class="none1">没有谁在干</div>');
+  root.querySelector('.none1').classList.toggle('on',!L1.rows);
+  const keep=new Set();
+  ts.forEach(t=>{keep.add(t.键);let el=root.querySelector('.r[data-t="'+CSS.escape(t.键)+'"]');
+    if(!el){el=document.createElement('div');el.className='r';el.dataset.t=t.键;root.appendChild(el);}
+    const r1=LV<=1&&L1.pos[t.键],p=r1||L.pos[t.键],open=(st.open.has(t.键)||常开(t))&&!t.施工区&&LV>1;
+    el.className='r'+(t.读不出?' unread':'')+(r1?' row1':'')+(LV<=1&&!r1?' hide1':'')+(!r1&&布()[t.键]&&布()[t.键].折?' fold':'');
+    el.style.cssText='left:'+(p.x+I)+'px;top:'+(p.y+I)+'px;width:'+(p.w-2*I)+'px;height:'+(p.h-2*I)+'px;--nw:'+(L1.N*CW)+'px;--bw:'+(p.w-2*I)+'px;--tw:'+标宽(t,r1,L1)+'px';   // 块比格位四边各缩 2px
+    const html=块HTML(t,open);if(el._h!==html){el.innerHTML=html;el._h=html;}
+    let ov=root.querySelector('.claim.ovc[data-cl="'+CSS.escape(t.键)+'"]');   // 只找总览自己的框（施工区格子上的框也带 data-cl）
+    if(t.灯.length||t.待续){if(!ov){ov=document.createElement('div');ov.className='claim ovc';ov.dataset.cl=t.键;root.appendChild(ov);}
+      const tags=LV==0?一块(t):名牌们(t),tk=JSON.stringify(tags)+(t.会话?t.会话链接||'':'');if(ov._t!==tk){ov.innerHTML=claimHTML(tags,0,t.会话?t.会话链接:'');ov._t=tk;ov._lv0=null;}if(LV==0||ov._lv0){名牌提示(ov,t);ov._lv0=LV==0;}
+      ov.className='claim ovc'+(t.灯.length?(全等(t.灯)?' wait':''):' wait xu')+(LV<=1&&!r1?' hide1':'');
+      ov.style.cssText='--c:var(--'+(t.灯.length?色(主灯(t).谁):'xu')+');left:'+(p.x+I)+'px;top:'+(p.y+I)+'px;width:'+(p.w-2*I)+'px;height:'+(p.h-2*I)+'px';}
+
+    else if(ov)ov.remove();});
+  root.querySelectorAll('.r').forEach(el=>{if(!keep.has(el.dataset.t))el.remove();});
+  root.querySelectorAll('.claim.ovc[data-cl]').forEach(el=>{if(!keep.has(el.dataset.cl))el.remove();});
+  const 睡=DATA.任务.filter(t=>!可见(t));
+  const sl=root.querySelector('.sleep');sl.style.cssText='left:'+G+'px;top:'+L.sleepY+'px;width:'+(OVW*CW)+'px';
+  sl.innerHTML=睡HTML(睡);
+  要窗();镜头();排跑马();
+  return L;}
+// 窗口多大由这一层的内容定：算好告诉小窗，小窗以左上角为准原地动画改大小（你自己拖过 2、3 层的大小，小窗照你拖的）
+function 要窗(){if(!NATIVE||!排过)return;const [L,L1]=排过;let w,h;
+  if(LV==0){w=M1+L1.T*CW+M1;h=M1+Math.max(1,L1.rows)*U+M1+28;}/* 名牌层（卷四 6.43）：只留名牌那一列，四周半格；底下一行只放圆点（6.67） */else if(LV==1){w=M1+(L1.N+BC+1+L1.T)*CW+M1;h=M1+Math.max(1,L1.rows)*U+8+28;}
+  else if(LV==2){const sl=cv.querySelector('.sleep');w=M1+OVW*CW+M1+(SIDE?360:0);h=L.sleepY+(sl?sl.offsetHeight:0)-(U-M1)+8+28;}
+  else if(竖){w=横行位._高*CW+2*M1;h=M1+(横标格+6*横镜格)*G+M1+28;}/* 分卷五：竖排一屏 6 条、字段全放下 */else{w=(横标格+6*横镜格)*CW+2*M1;h=M1+横行位._高*G+M1+28;}/* 卷四 6.65：横排一屏 6 镜、22 行正好放下，四周 16 */   // 第 3 层按施工区宽来（格子大了施工区跟着宽）
+  const 右=LV==2&&SIDE?360:0,k=LV+':'+w+':'+h;if(要窗.k!==k){要窗.k=k;原生({窗:{层:LV,宽:w,高:h,右栏:右}});}}
+// 切层：原生小窗的 − + 叫这个（浏览器里只有 2、3 层：「‹ 回总览」、施工区的小签、点施工区任务）
+function 去层(n,立刻){const 旧=LV,d=document.documentElement;LV=Math.max(NATIVE?0:2,Math.min(3,n));去层.时=Date.now();
+  d.classList.toggle('lv1',LV<=1);d.classList.toggle('lv0',LV==0);d.classList.toggle('lv3',LV==3);d.classList.add('qie');clearTimeout(去层.qt);去层.qt=setTimeout(()=>d.classList.remove('qie'),600);   // 切层那 0.6 秒亮片先藏（选框在变形）
+  if(立刻)d.classList.add('noanim');
+  if(旧==2&&LV==3)homeCam={...cam};
+  if(LV==3)WORK=区号?[区号]:[];else{if(SIDE&&SIDE.kind=='zq')closeSide();WORK=[];}
+  renderOverview(cv,MAIN);
+  if(LV==3){if(NATIVE)cam={x:区W().x-M1,y:U-M1,s:1};else if(区号)fit([区号]);}
+  else if(LV==2){if(旧==3)cam={...homeCam};else if(旧<=1)cam={x:NATIVE?G-M1:0,y:NATIVE?U-M1:0,s:1};}
+  else cam={x:G-M1,y:U-M1,s:1};
+  applyCam();setChips();要窗();if(NATIVE&&LV==2){clearTimeout(适配总览.t);适配总览.t=setTimeout(适配总览,600);}
+  if(立刻){void document.body.offsetWidth;requestAnimationFrame(()=>requestAnimationFrame(()=>d.classList.remove('noanim')));}}
+去层.时=0;
+// ---------- 施工区（分卷五：照 区域.json 画；批次、候选、意见的结构是施工台引擎通用的） ----------
+function 缩(f){return '/'+区号+'/t/'+encodeURI(f)+'?w=300';}
+function 候选格(j,栏){
+  const 默=默认栏(),批们=(j.批次||[]).filter(b=>(b.栏||默)==栏);
+  const nb=j.下一批&&(j.下一批.栏||默)==栏?j.下一批:null;
+  const 待挑=批们.filter(b=>(b.产出||[]).length&&!b.结论);
+  let 选=null;批们.forEach(b=>(b.产出||[]).forEach(p=>{if(p.选)选=p;}));
+  const 在出=j.在出&&批们.some(b=>b.号==j.在出);
+  const 末=(()=>{let x=null;批们.forEach(b=>(b.产出||[]).forEach(p=>{x=p;}));return x;})();
+  let st='',lb='',img=选||(待挑.length?待挑[待挑.length-1].产出[0]:null)||末;
+  if(nb&&!nb.确认&&!nb.依据改了){if((nb.预计||{}).额度=='无')lb='不花钱，等出';else{st='w';lb='第 '+nb.号+' 批等你点头';}}
+  else if(待挑.length){st='w';lb='第 '+待挑[待挑.length-1].号+' 批等你挑';}
+  else if(在出){lb='在出第 '+j.在出+' 批';}
+  else if(nb&&nb.确认){lb='已批，等出';}
+  else if(nb&&nb.依据改了){lb=(区配().依据名||'依据')+'改了，等改批';}
+  else if(选)st='d';
+  return {st,lb,img,在出,候选:待挑.length?(待挑[待挑.length-1].产出||[]):(img?[img]:[])};}
+// 认领框：每格一道谁的颜色的框；同一个谁的名牌只挂在它的第一格；两个谁认领同一格（撞格）每块名牌都挂、前面加红的「撞格」
+function drawClaims(wa){const 挂过=new Set(),mv=(区任务()||{}).键||'';wa.querySelectorAll('[data-claim]').forEach(c=>{const ws=c.dataset.claim.split(',').map(x=>x.split(':')),撞=ws.filter(([w,s])=>s=='干'||s=='等').length>1,等=ws.every(([w,s])=>s!='干'),灰=ws.every(([w,s])=>s=='改了'),格态=ws.some(([w,s])=>s=='改了'||s=='验收'||s=='等你');
+  // 卷四 6.67（用户：五步是底层状态机，复用名牌、选框、颜色只换字）：改了 = 灰框（用户改了、Claude 还没读到）；施工；等你（Claude 没改、要问用户）；验收（Claude 改好了）。格子状态每格都挂名牌，验收、等你的名牌点一下 = 知道了
+  const 牌=([w,s])=>s=='改了'?{字:'改了',c:'xu',续:1}:s=='验收'||s=='等你'?{字:s,c:色(w),续:1}:{字:w+(撞?(s=='等'?'·等你':''):' '+(s=='等'?'等你':(施工家(w)?'施工中':'派工中'))),c:色(w),ack:s=='等'?w:null};
+  const tags=(撞?[{字:'撞格',hit:1,c:'other'}]:[]).concat(撞||格态||!挂过.has(ws[0][0]+ws[0][1])?ws.map(牌):[]);ws.forEach(([w,s])=>挂过.add(w+s));
+  wa.insertAdjacentHTML('beforeend','<div class="claim'+(等?' wait':'')+(灰?' xu':'')+'" data-cl="'+esc(mv)+'" style="--c:var(--'+(灰?'xu':色((ws.find(([w,s])=>s!='改了')||ws[0])[0]))+');left:'+c.offsetLeft+'px;top:'+c.offsetTop+'px;width:'+c.offsetWidth+'px;height:'+c.offsetHeight+'px">'+claimHTML(只写状态(tags))+'</div>');
+  if(c.dataset.hk&&ws.some(([w,s])=>s=='验收'||s=='等你')){const tg=wa.lastElementChild.querySelector('.ctag:last-child');if(tg){tg.classList.add('go2');tg.dataset.hacc=c.dataset.hk;tg.title='看过了：点一下，这一格的框就消失';}}});}
+function renderAreas(){
+  let el=cv.querySelector('.wa');
+  if(el&&el.dataset.a!==区号){el.remove();const d=$('qut');if(d)d.remove();el=null;}   // 换了区：整块重建
+  if(!区号)return;
+  const A=区W();
+  if(!el){cv.insertAdjacentHTML('beforeend','<div class="district" id="qut" style="left:'+A.x+'px;top:'+(NATIVE?U-M1+1:1)+'px">施工区 · '+esc(A.name)+'</div><div class="wa" data-a="'+esc(区号)+'" style="left:'+A.x+'px;top:'+A.y+'px"></div>');el=cv.querySelector('.wa');}
+  const 起=performance.now();if(QD){横排列们();A.w=竖?横行位._高*CW:横排列们.宽;}横排虚(el,true);画布高();记计(performance.now()-起);
+  let 花='';if(QD&&QD._花费&&Object.keys(QD._花费).length){const 万=x=>x>=10000?(Math.round(x/1000)/10)+' 万':String(x);花='本期已花：'+Object.entries(QD._花费).map(([k,v])=>k+' '+万(v.已花)+'/'+万(v.上限)+' '+v.单位).join(' · ');$('spend').textContent=WORK.includes(区号)?花:'';}
+  const d=$('qut');if(d)d.innerHTML=esc('施工区 · '+A.name+(NATIVE&&花?' · '+花:''))+(区超界.length?'<b class="cj"> · 超出区域，没画：'+esc(区超界.join('、'))+'（要你批）</b>':'');}
+
+// ---------- 压力测试（分卷三 4.2，只在 /tmp 副本里）：只建窗口里的格子、测试钩子 ----------
+const VT=new URLSearchParams(location.search).get('vt')!=='0';   // 11-03 起默认只建窗口里的格子；?vt=0 全建
+const 计={次:0,总:0,长:0};
+function 记计(ms){计.次++;计.总+=ms;if(ms>计.长)计.长=ms;}
+function 取计(){const r='次='+计.次+' 共='+计.总.toFixed(0)+'ms 最长='+计.长.toFixed(1)+'ms';计.次=0;计.总=0;计.长=0;return r;}
+function 视窗(){const s=cam.s||1;return {x0:cam.x,y0:cam.y,x1:cam.x+vp.clientWidth/s,y1:cam.y+vp.clientHeight/s};}
+const 在切=()=>Date.now()-去层.时<650;
+function 画布高(){if(V==='A')return;const mx=cv.querySelector('.wa .mx'),sl0=cv.querySelector('.sleep'),a=排过?排过[0].sleepY+(sl0?sl0.offsetHeight:0)+200:0,b=区W().y+区高()+200;cv.style.height=Math.max(4000,a,b)+'px';}
+// 总览、第 1 层：排版照旧算全部（便宜），只把镜头里（上下各多一屏）的块和框放进页面
+const 虚块=new Map(),虚框=new Map();
+function 总览虚(root,st,只同步){
+  if(!DATA)return;
+  if(!只同步||!排过||!总览虚.ts){
+    const ts=DATA.任务.filter(可见).slice().sort((a,b)=>(b.灯.length||b.待续?1:0)-(a.灯.length||a.待续?1:0)),L=排总览(ts,st.open),L1=排第一层(ts,L);排过=[L,L1];总览虚.ts=ts;
+    if(!root.querySelector('.sleep'))root.insertAdjacentHTML('beforeend','<div class="district ovt" style="left:'+G+'px;top:'+(NATIVE?U-M1+1:1)+'px">总览</div><div class="sleep"></div><div class="none1">没有谁在干</div>');
+    root.querySelector('.none1').classList.toggle('on',!L1.rows);
+    const 睡=DATA.任务.filter(t=>!可见(t));
+    const sl=root.querySelector('.sleep');sl.style.cssText='left:'+G+'px;top:'+L.sleepY+'px;width:'+(OVW*CW)+'px';
+    sl.innerHTML=睡HTML(睡);
+    画布高();}
+  const [L,L1]=排过,ts=总览虚.ts,w=视窗(),m=Math.max(300,w.y1-w.y0),要=new Set(),切=在切();
+  ts.forEach(t=>{const r1=LV<=1&&L1.pos[t.键],p=r1||L.pos[t.键];
+    if((LV<=1&&!r1)||(LV==3&&!切)||p.x>w.x1+m||p.x+p.w<w.x0-m||p.y>w.y1+m||p.y+p.h<w.y0-m)return;
+    要.add(t.键);
+    let el=虚块.get(t.键);if(!el){el=document.createElement('div');el.dataset.t=t.键;root.appendChild(el);虚块.set(t.键,el);}
+    const open=(st.open.has(t.键)||常开(t))&&!t.施工区&&LV>1;
+    const cls='r'+(t.读不出?' unread':'')+(r1?' row1':'')+(!r1&&布()[t.键]&&布()[t.键].折?' fold':''),css='left:'+(p.x+I)+'px;top:'+(p.y+I)+'px;width:'+(p.w-2*I)+'px;height:'+(p.h-2*I)+'px;--nw:'+(L1.N*CW)+'px;--bw:'+(p.w-2*I)+'px;--tw:'+标宽(t,r1,L1)+'px';
+    if(el._cls!==cls){el.className=cls;el._cls=cls;}if(el._css!==css){el.style.cssText=css;el._css=css;}
+    if(!只同步||el._h===undefined){const html=块HTML(t,open);if(el._h!==html){el.innerHTML=html;el._h=html;}}
+    let ov=虚框.get(t.键);
+    if(t.灯.length||t.待续){if(!ov){ov=document.createElement('div');ov.dataset.cl=t.键;root.appendChild(ov);虚框.set(t.键,ov);}
+      const tags=LV==0?一块(t):名牌们(t),tk=JSON.stringify(tags)+(t.会话?t.会话链接||'':'');if(ov._t!==tk){ov.innerHTML=claimHTML(tags,0,t.会话?t.会话链接:'');ov._t=tk;ov._lv0=null;}if(LV==0||ov._lv0){名牌提示(ov,t);ov._lv0=LV==0;}
+      const oc='claim ovc'+(t.灯.length?(全等(t.灯)?' wait':''):' wait xu'),os='--c:var(--'+(t.灯.length?色(主灯(t).谁):'xu')+');left:'+(p.x+I)+'px;top:'+(p.y+I)+'px;width:'+(p.w-2*I)+'px;height:'+(p.h-2*I)+'px';
+      if(ov._cls!==oc){const off=ov.classList.contains('off');ov.className=oc+(off?' off':'');ov._cls=oc;}if(ov._css!==os){ov.style.cssText=os;ov._css=os;}}
+    else if(ov){ov.remove();虚框.delete(t.键);}});
+  if(!切){for(const [k,el] of 虚块)if(!要.has(k)){el.remove();虚块.delete(k);}for(const [k,el] of 虚框)if(!要.has(k)){el.remove();虚框.delete(k);}}
+  else{clearTimeout(总览虚.t);总览虚.t=setTimeout(()=>{总览虚(root,st,true);const el=cv.querySelector('.wa');if(el)横排虚(el,false);},700);}
+  if(!只同步)要窗();镜头();排跑马();}
+// ---------- 施工区（卷四 6.65 横排，用户 11-06 定甲：条目一字左右排开、段名横跨在上、字段一行一个；左边字段名一列粘住；只画窗口里的那几个条目）----------
+// 分卷五：排=竖 时横竖对调——条目一行一个、段名在最左一列、字段一列一个，字段名那一行粘在顶上。下面的 x 都是「沿条目方向」的位置
+function 横排列们(){const 键=区号+'|'+竖+'|'+QDREV+'|'+条目们().length;if(横排列们.键===键)return 横排列们.列;
+  const E=竖?G:CW,按段={};条目们().forEach(j=>{(按段[j.段]=按段[j.段]||[]).push(j);});
+  const 列=[],段=[];let x=横标格*E;
+  ((QD&&QD.段)||[]).forEach(s=>{const js=按段[s.名]||[];if(!js.length)return;const x0=x;js.forEach(j=>{列.push({j,x,g:s.名});x+=横镜格*E;});段.push({g:s.名,x0,x1:x,n:js.length});});
+  横排列们.键=键;横排列们.列=列;横排列们.段=段;横排列们.宽=x;return 列;}
+// 候选格（MV 的样图、样片）里放候选：等你挑的那一批全摆出来，没有就放选中的那张；按 16:9 缩放不裁。点候选看大图（视频用 QuickTime 开），悬停右上角「选」直接挑
+function 横候选(j,栏,c,w,h,k,视){const ps=c.候选||[];if(!ps.length)return '<span class="hzero">—</span>';const n=ps.length,g=4,pd=4,H=h-(c.lb?14:0);
+  const cw=Math.floor(Math.min((w-2*pd-g*(n-1))/n,(H-2*pd)*16/9)),ch=Math.round(cw*9/16);
+  return '<span class="mcands" style="bottom:'+(c.lb?14:0)+'px">'+ps.map(q=>'<i class="'+(q.选&&n>1?'on':'')+'" data-hpv="'+esc(j.号+'|'+k+'|'+q.id)+'" title="'+(视?'点一下用 QuickTime 看':'点一下看大图')+(q.标?'：'+esc(q.标):'')+'" style="width:'+cw+'px;height:'+ch+'px;background-image:url('+缩(q.文件)+')">'+(q.选?'':'<b data-hpick="'+esc(j.号+'|'+q.id)+'" title="选这一'+(视?'条':'张')+'">选</b>')+'</i>').join('')+'</span>';}
+function 画条目(j,x,认){const 意=(j.意见||[]).filter(y=>y.谁=='用户'&&y.处理!='已处理').length,c=区配();let h='';
+  const 框=k=>{const p=横行位[k];return 竖?{l:p.y*CW+I,t:x+I,w:p.h*CW-2*I,h:横镜格*G-2*I}:{l:x+I,t:p.y*G+I,w:横镜格*CW-2*I,h:p.h*G-2*I};};
+  const 格=(k,cls,内,属)=>{const r=框(k);return '<div class="hc '+cls+'" data-cell="'+esc(j.号+'|'+k)+'"'+(属||'')+' style="left:'+r.l+'px;top:'+r.t+'px;width:'+r.w+'px;height:'+r.h+'px">'+内+'</div>';};
+  const 文=(k,t,让)=>{const n=Math.max(1,Math.floor((框(k).h-8)/15));return '<div class="hx" style="-webkit-line-clamp:'+n+';max-height:'+(n*15)+'px"><span>'+(让?'<i class="hsp"></i>':'')+t+'</span></div>';};   // 让：这格挂着名牌，第一行在名牌前面折行
+  const 选中=k=>SELC&&SELC==j.号+'|'+(行栏(k)||'文')?' sel':'',空='<span class="sub0">—</span>',截=(v,r)=>String(v||'').split(r.截到?new RegExp(r.截到):/$^/)[0];
+  横行.forEach(([k,hh,r])=>{const fs=r.字段||[];
+    if(r.类=='头'){h+=格(k,'hno'+选中(k),'<b>'+esc(j.号)+'</b><span>'+esc(截(j[fs[0]],r))+'</span>'+(j.通过?'<i class="tag">✓通过</i>':'')+(意?'<i class="tag">💬'+意+'</i>':'')+(j.卡住?'<i class="tag" style="color:#c62828">卡住</i>':''),认(j.号,'',false,k)+' title="点一下看这一'+esc(条目名())+'的详情'+(c.详情提示?'（'+esc(c.详情提示)+'）':'')+'"');return;}
+    if(r.类=='状态'){const v=j[fs[0]]||'',色=r.状态色||{},态=Object.keys(色).find(z=>new RegExp(色[z]).test(v))||'';
+      h+=格(k,'hst '+(态=='d'?'d':态=='w'?'w':''),esc(截(j[fs[0]]||'—',r)),认(j.号,'文',false,k)+' data-edit="'+esc(fs.join(','))+'" title="点一下就地改"');return;}
+    if(r.类=='文字'){const 括=r.括||'',主=j[fs[0]]?(括?括[0]:'')+esc(j[fs[0]])+(括?括[1]:''):空,t=主+fs.slice(1).map(f=>'<br><span class="sub">'+esc(j[f])+'</span>').join(''),认k=认(j.号,'',false,k);
+      h+=格(k,'htx',文(k,t,认k),认k+' data-edit="'+esc(fs.join(','))+'" title="点一下就地改'+(hh>=3?'（太长的点开在格子里上下滑）':'')+'"');return;}
+    if(r.类=='候选'){const 栏=r.栏,cc=候选格(j,栏),rr=框(k);h+=格(k,'him '+(cc.st=='w'?'w':cc.st=='d'?'d':'')+选中(k),横候选(j,栏,cc,rr.w,rr.h,k,!!r.视频)+(cc.lb?'<span class="lb">'+esc(cc.lb)+'</span>':''),认(j.号,栏,cc.在出,k));return;}
+    h+=格(k,'hz0','<span class="hzero">'+esc(r.空字||'还没有')+'</span>');});
+  return h;}
+function 横排虚(el,重){
+  if(!QD){el.innerHTML='<div class="ask">读不到 '+esc(区名())+' 存档</div>';return;}
+  const 列=横排列们(),w=视窗(),A=区W(),E=竖?G:CW,v0=竖?w.y0-A.y:w.x0-A.x,v1=竖?w.y1-A.y:w.x1-A.x,m=Math.max(400,v1-v0),x0=v0-m,x1=v1+m;
+  const mvt=区任务(),态=(mvt&&mvt.施工区态)||{},键=横排列们.键+'|'+JSON.stringify(mvt?mvt.灯:[])+'|'+JSON.stringify(态.格||{})+'|'+SELC+'|'+QDREV;
+  let a=-1,b=-1;列.forEach((c,i)=>{if(c.x+横镜格*E>=x0&&c.x<=x1){if(a<0)a=i;b=i;}});
+  const 范=a+':'+b+'|'+键;if(!重&&范===横排虚.范){粘标();return;}
+  if(在切()&&横排虚.范&&a<0)return;   // 切层动画里只加不删
+  横排虚.范=范;
+  const 灯格={};(mvt||{灯:[]}).灯.forEach(l=>(l.格子||[]).forEach(g=>{const q=灯格[g]=灯格[g]||{};if(q[l.谁]!=='干')q[l.谁]=l.态=='等'?'等':'干';}));
+  const 认=(号,栏,在出,行)=>{const q=Object.assign({},灯格[号+':'+栏]||{});if(在出)q.Claude='干';const s=行&&(态.格||{})[号+':'+行];   // 卷四 6.67：这一格的状态（改了 / 施工 / 等你 / 验收）
+    if(s=='改了')q.用户='改了';else if(s=='施工')q.Claude=q.Claude||'干';else if(s)q.Claude=s;const ws=Object.entries(q);return ws.length?' data-claim="'+esc(ws.map(([w,x])=>w+':'+x).join(','))+'"'+(行?' data-hk="'+esc(号+':'+行)+'"':''):'';};
+  let h='';
+  横排列们.段.forEach(s=>{if(s.x1<x0||s.x0>x1)return;const r=竖?{l:I,t:s.x0+I,w:CW-2*I,h:s.x1-s.x0-2*I}:{l:s.x0+I,t:I,w:s.x1-s.x0-2*I,h:G-2*I};h+='<div class="hseg'+(竖?' v':'')+'" data-gx="'+s.x0+'" style="left:'+r.l+'px;top:'+r.t+'px;width:'+r.w+'px;height:'+r.h+'px"><span><b>'+esc(s.g.split('（')[0])+'</b><small>'+s.n+' '+esc(条目名())+'</small></span></div>';});
+  for(let i=a;i>=0&&i<=b;i++)h+=画条目(列[i].j,列[i].x,认);
+  h+='<div class="hlab'+(竖?' v':'')+'" style="width:'+(竖?横行位._高*CW:横标格*CW)+'px;height:'+(竖?横标格*G:横行位._高*G)+'px;--m1:'+M1+'px"><div style="'+(竖?'left:'+I+'px;width:'+(CW-2*I):'top:'+I+'px;height:'+(G-2*I))+'px"></div>'+横行.map(([k,hh])=>'<div style="'+(竖?'left:'+(横行位[k].y*CW+I)+'px;width:'+(hh*CW-2*I):'top:'+(横行位[k].y*G+I)+'px;height:'+(hh*G-2*I))+'px">'+esc(k)+'</div>').join('')+'</div>';
+  el.innerHTML=h;drawClaims(el);粘标();镜头();}
+// 字段名一列、段名：滑到哪都粘在窗口左边看得见（竖排：字段名一行粘在顶上，段名往下跟）
+function 粘标(){const el=cv.querySelector('.wa');if(!el)return;const A=区W(),lab=el.querySelector('.hlab');
+  if(竖){const 上=Math.max(0,cam.y+M1-A.y);if(lab)lab.style.transform=上?'translateY('+上+'px)':'';
+    el.querySelectorAll('.hseg').forEach(s=>{const sp=s.firstElementChild;if(!sp)return;const 移=Math.max(0,Math.min(s.offsetHeight-sp.offsetHeight-16,上+横标格*G-(+s.dataset.gx)));sp.style.transform=移?'translateY('+移+'px)':'';});return;}
+  const 左=Math.max(0,cam.x+M1-A.x);if(lab)lab.style.transform=左?'translateX('+左+'px)':'';
+  el.querySelectorAll('.hseg').forEach(s=>{const sp=s.firstElementChild;if(!sp)return;const 移=Math.max(0,Math.min(s.offsetWidth-sp.offsetWidth-16,左+横标格*CW-(+s.dataset.gx)));sp.style.transform=移?'translateX('+移+'px)':'';});}
+// 就地改字（卷四 6.66）：点文字格就在原地改，点别处存，⌘回车也存，Esc 不改；草稿存在这台电脑；同一条别人刚改过会提示，你的字留在草稿里。
+// 分卷五 8.8（用户挑甲）：不再另弹框，改的框盖在这一格上、大小不变，长了在格子里上下滑
+let 横编={};
+function 开编辑(c){if(横编.el)关编辑(true);const 号=c.dataset.cell.split('|')[0],j=条目们().find(x=>x.号==号);if(!j)return;const fs=c.dataset.edit.split(',');
+  const ed=document.createElement('div');ed.className='hin';ed.style.cssText='left:'+(区W().x+c.offsetLeft)+'px;top:'+(区W().y+c.offsetTop)+'px;width:'+c.offsetWidth+'px;height:'+c.offsetHeight+'px';
+  ed.innerHTML=fs.map((f,i)=>'<textarea data-hf="'+esc(f)+'" placeholder="'+esc(f)+'" title="'+esc(f)+'"'+(i?' class="sub"':'')+'>'+esc(草稿(号,f)??(j[f]||''))+'</textarea>').join('');
+  cv.appendChild(ed);横编={el:ed,号};const t=ed.querySelector('textarea');t.focus();t.setSelectionRange(t.value.length,t.value.length);requestAnimationFrame(()=>{t.scrollTop=0;});   // 光标放最后，先给看开头
+  底提示('就在格子里改：长了上下滑 · 点别处就存 · ⌘回车也存 · Esc 不改');
+  ed.addEventListener('input',e=>{const f=e.target.dataset&&e.target.dataset.hf;if(f)存草稿(号,f,e.target.value);});
+  ed.addEventListener('keydown',e=>{if(e.key=='Escape'){e.preventDefault();关编辑(false);}else if(e.key=='Enter'&&(e.metaKey||e.ctrlKey)){e.preventDefault();关编辑(true);}});
+  ed.addEventListener('focusout',()=>setTimeout(()=>{if(横编.el===ed&&!ed.contains(document.activeElement))关编辑(true);},0));}
+async function 关编辑(存){const x=横编;if(!x.el)return;横编={};const vals=[...x.el.querySelectorAll('textarea')].map(t=>[t.dataset.hf,t.value]);x.el.remove();
+  if(!存){vals.forEach(([f])=>存草稿(x.号,f,null));return;}
+  for(const [f,v] of vals){const j=条目们().find(y=>y.号==x.号);if(!j)break;if((j[f]||'')==v){存草稿(x.号,f,null);continue;}
+    if(await 区操作({op:'改格',条:x.号,字段:f,值:v,版:j.版},'存好了：'+x.号+' · '+f))存草稿(x.号,f,null);else break;}}
+// 看大图（卷四 6.66）：点样图的候选弹出大图，‹ › 翻这一批的几张，「选这张」直接挑，Esc 关
+function 开灯箱(号,k,id){const j=条目们().find(x=>x.号==号);if(!j)return;const ps=候选格(j,行栏(k)).候选||[];if(!ps.length)return;
+  let bx=$('lbx');if(!bx){bx=document.createElement('div');bx.id='lbx';document.body.appendChild(bx);
+    bx.addEventListener('click',async e=>{const s=bx._s;if(!s)return;const b=e.target.closest('[data-lb]');if(!b){if(e.target===bx)关灯箱();return;}const d=b.dataset.lb;
+      if(d=='x')关灯箱();else if(d=='p'||d=='n'){s.i=(s.i+(d=='p'?-1:1)+s.ps.length)%s.ps.length;画灯箱();}
+      else if(d=='pick'){const q=s.ps[s.i];if(await 区操作({op:'选',条:s.号,产出:q.id},'记下了你选的')){const j2=条目们().find(x=>x.号==s.号),c2=j2&&候选格(j2,行栏(s.k));if(c2&&c2.候选&&c2.候选.length)s.ps=c2.候选;画灯箱();}}});
+    addEventListener('keydown',e=>{if(!bx.classList.contains('on'))return;const s=bx._s;if(e.key=='Escape')关灯箱();else if(e.key=='ArrowLeft'||e.key=='ArrowRight'){s.i=(s.i+(e.key=='ArrowLeft'?-1:1)+s.ps.length)%s.ps.length;画灯箱();}});}
+  bx._s={号,k,ps,i:Math.max(0,ps.findIndex(p=>p.id==id))};bx.classList.add('on');画灯箱();}
+function 画灯箱(){const bx=$('lbx'),s=bx._s,q=s.ps[s.i];if(!q)return;
+  bx.innerHTML='<div class="lbt"><b>'+esc(s.号)+' · '+esc(s.k)+'</b><span>'+(s.i+1)+' / '+s.ps.length+(q.标?' · '+esc(q.标):'')+'</span><span class="sp"></span>'+(q.选?'<em>已选这张</em>':'<button data-lb="pick">选这张</button>')+'<button data-lb="x">关（Esc）</button></div><img src="/'+区号+'/f/'+encodeURI(q.文件)+'">'+(s.ps.length>1?'<button class="lbp" data-lb="p">‹</button><button class="lbn" data-lb="n">›</button>':'');}
+function 关灯箱(){const bx=$('lbx');if(bx){bx.classList.remove('on');bx.innerHTML='';bx._s=null;}}
+// 样片：点候选让看板服务用 QuickTime 打开（卷四 6.66）；看完回表格悬停点「选」
+async function 开视频(号,id){const j=条目们().find(x=>x.号==号);const q=j&&(j.批次||[]).flatMap(b=>b.产出||[]).find(z=>z.id==id);if(!q)return;
+  try{await api('/api/打开',{任务:(区任务()||{}).键,文件:q.文件,用:'QuickTime'});底提示('用 QuickTime 打开了 '+号+' 的样片'+(q.标?'「'+q.标+'」':'')+'；看完回表格，悬停那一条点「选」');}catch(x){底提示('没打开：'+x.message,true);}}
+// 全手动叫醒（卷四 6.67，用户：「改成全手动吧」）：用户点「叫醒 Claude」才把没发的改动打包发给在做 MV 的会话；没有会话就给「接手」
+async function 叫醒(){if(!区号)return;try{const r=await api('/api/施工区/'+区号+'/叫醒',{}),mvt=区任务();
+  if(!r.发了){底提示('没有要发的改动');return;}
+  if(r.会话)底提示('发给 Claude 了：'+r.格+' 格、'+r.发了+' 处改动；插件等你停手 20 秒送进会话');
+  else{clearTimeout(底提示.t);line.innerHTML='<span>发出去了，可现在没有会话在做 '+esc(区名())+(mvt&&mvt.会话链接?'：<a href="'+esc(mvt.会话链接)+'">开新会话接手</a>':'；下次有会话读看板时会看到')+'</span>';底提示.t=setTimeout(setLine,15000);}
+  tick();}catch(x){底提示('没发出去：'+x.message,true);}}
+function 底提示(t,err){line.innerHTML='<span'+(err?' style="color:#c62828"':'')+'>'+esc(t)+'</span>';clearTimeout(底提示.t);底提示.t=setTimeout(setLine,5000);}
+// 只建窗口里的那版（W2）：数据没变（去掉开头的时间比整份文字）就不解析、不重排，只更新底下一行的时间
+if(VT){loadBoard=async function(){try{const r=await fetch('/api/看板',{cache:'no-store'});const 文=await r.text();const 身=文.replace(/^\{"时间": "[^"]*", /,'');
+  if(DATA&&身===loadBoard.旧){const m=文.match(/^\{"时间": "([^"]*)"/);if(m)DATA.时间=m[1];setLine();return;}
+  loadBoard.旧=身;DATA=JSON.parse(文);设区(区号);renderOverview(cv,MAIN);{const el=cv.querySelector('.wa');if(el)横排虚(el,false);}   // 卷四 6.67：灯、格子状态变了也重画施工区（横排虚 自己比对，没变就不动）
+  setLine();if(SIDE&&SIDE.kind=='step')rerenderSide();}catch(e){line.textContent='读不到看板：'+e.message;}};}
+// 测试钩子
+addEventListener('keydown',e=>{if(e.key==='Meta')document.documentElement.classList.add('cmd');});addEventListener('keyup',e=>{if(e.key==='Meta')document.documentElement.classList.remove('cmd');});addEventListener('blur',()=>document.documentElement.classList.remove('cmd'));
+function 排跑马(){clearTimeout(排跑马.t);排跑马.t=setTimeout(跑马,650);}
+// 11-03 03:4x：停上去才滚（MQ=2）时，动画等鼠标停上去才建、移开就删——先建好再暂停的那版，总览里一直占着 CPU（第 2 层 15%，不滚 1.2%）
+// 11-03 04:0x 用户：「往回滚动的信息基本是不可用的，所以制作到滚动到末尾就行，移开后重置就行」→ 停 0.6 秒、滚到末尾停住（动画结束就删，末尾位置写成静态的），移开回到开头
+function 起跑(x){const d=x._d;if(!d||x._a||x._完)return;const 走=d/MQV*1000,头=MQ==2?600:2500,T=头+走,到='translateX(-'+d+'px)';
+  const a=x._a=x.animate([{transform:'translateX(0)',offset:0},{transform:'translateX(0)',offset:头/T,easing:'ease-in-out'},{transform:到,offset:1}],{duration:T});
+  a.onfinish=()=>{if(x._a!==a)return;x.style.transform=到;x._完=1;x._a=null;a.cancel();};}
+function 收跑(x){if(x._a){const a=x._a;x._a=null;a.cancel();}x._完=0;x.style.transform='';}
+function 跑马(){cv.querySelectorAll('.r .tn2').forEach(n=>{const x=n.firstElementChild;if(!x)return;
+  const 宽=parseFloat(getComputedStyle(n).maxWidth),多=x.offsetWidth-宽;
+  if(!(多>1)){n.classList.remove('mq');收跑(x);x._d=0;return;}
+  n.classList.add('mq');if(!MQ)return;const d=Math.round(多+10);if(x._d===d)return;
+  收跑(x);x._d=d;if(MQ==1)起跑(x);});}
+if(MQ==2){addEventListener('mouseover',e=>{const r=e.target.closest&&e.target.closest('.r');cv.querySelectorAll('.tn2.mq .tx').forEach(x=>{const on=!!r&&r.contains(x);if(on)起跑(x);else if(x._a||x._完)收跑(x);});});
+  // 04:1x 用户：「为什么第三个任务标题在自动反复横跳」——置顶的小窗不在前台时，鼠标挪出窗口，页面常收不到「离开」，以为还停着、来回滚个不停；多认几种离开
+  const 全收=()=>cv.querySelectorAll('.tn2.mq .tx').forEach(收跑);document.documentElement.addEventListener('mouseleave',全收);
+  addEventListener('mouseout',e=>{if(!e.relatedTarget)全收();});addEventListener('blur',全收);document.addEventListener('visibilitychange',()=>{if(document.hidden)全收();});}
+function 停跑马(t){let n=0;cv.querySelectorAll('.tn2.mq .tx').forEach(x=>{收跑(x);起跑(x);if(x._a){x._a.pause();x._a.currentTime=t;n++;}});return n;}
+function 停亮片(t){let n=0;document.querySelectorAll('.cbm i,.cbm s').forEach(i=>i.getAnimations().forEach(a=>{a.pause();a.currentTime=t;n++;}));return n;}
+function 开压测(){if(!DATA||!QD)return 'no';DATA.任务.filter(可见).forEach((t,i)=>{if(i%5==0&&!t.施工区)MAIN.open.add(t.键);});横排虚.范='';renderOverview(cv,MAIN);renderAreas();
+  return '展开 '+MAIN.open.size+' 个任务，画布高 '+cv.style.height+'，页面元素 '+document.getElementsByTagName('*').length;}
+async function 测滚(秒,速){const ts=[];let dir=1;const t0=performance.now();
+  const 底=()=>LV==3?区W().y+区高()-vp.clientHeight:(排过?排过[0].sleepY+40-vp.clientHeight:0);
+  cv.classList.add('pan');
+  await new Promise(res=>{const f=t=>{ts.push(t);cam.y+=dir*速;const mx=Math.max(0,底());if(cam.y>mx){cam.y=mx;dir=-1;}if(cam.y<0){cam.y=0;dir=1;}applyCam();if(t-t0<秒*1000)requestAnimationFrame(f);else res();};requestAnimationFrame(f);});
+  cv.classList.remove('pan');
+  const d=ts.slice(1).map((t,i)=>t-ts[i]).sort((a,b)=>a-b);
+  return '标:帧滚'+LV+' n='+d.length+' 中位='+d[d.length>>1].toFixed(1)+' 最长='+d[d.length-1].toFixed(1)+' 超20ms='+d.filter(x=>x>20).length+' 超34ms='+d.filter(x=>x>34).length+' 元素='+document.getElementsByTagName('*').length;}
+// ---------- 视野、右栏、底下一行 ----------
+// 卷四 6.52（用户 11-06：「可以限制无限表格的显示，但未来有更多施工区肯定要能无限扩展表格」）：表格照样无限长（施工区往右排、内容往下长），镜头只停在有内容的地方，内容外最多露半格；内容长了、多了施工区，边界跟着长
+function 镜头边界(){const s=cam.s||1,vw=vp.clientWidth/s,vh=vp.clientHeight/s;let x1=0,y1=0;
+  const 总=()=>{const L=排过&&排过[0],sl=cv.querySelector('.sleep');if(L){x1=Math.max(x1,G+OVW*CW);y1=Math.max(y1,L.sleepY+(sl?sl.offsetHeight:0));}};
+  const 区=k=>{const a=WA[k];if(!a)return;x1=Math.max(x1,a.x+a.w);y1=Math.max(y1,a.y+(k==区号?区高():0));};   // 画着的那个施工区报自己的高（分卷五）
+  if(NATIVE){if(LV==3)(WORK.length?WORK:[区号]).forEach(区);else 总();}else{总();Object.keys(WA).forEach(区);}
+  const x0=NATIVE?(LV==3?区W().x-M1:G-M1):-U,y0=NATIVE?U-M1:-U;
+  return {x0,y0,x1:Math.max(x0,x1+M1-vw),y1:Math.max(y0,y1+M1-vh)};}
+function 夹镜头(){const b=镜头边界(),x=Math.min(b.x1,Math.max(b.x0,cam.x)),y=Math.min(b.y1,Math.max(b.y0,cam.y));if(x!==cam.x||y!==cam.y){cam.x=x;cam.y=y;applyCam();}}
+function applyCam(){cv.style.transform='translate('+(-cam.x*cam.s)+'px,'+(-cam.y*cam.s)+'px) scale('+cam.s+')';镜头();if(VT&&DATA&&!applyCam.排着){applyCam.排着=1;requestAnimationFrame(()=>{applyCam.排着=0;const 起=performance.now();总览虚(cv,MAIN,true);const el=cv.querySelector('.wa');if(el)横排虚(el,false);记计(performance.now()-起);});}}
+function vpW(){return vp.clientWidth-(SIDE&&!side.classList.contains('open')?360:0);}
+function fit(ids){const W=Math.max(400,vp.clientWidth-(SIDE&&!side.classList.contains('open')?360:0));let x0=1e9,x1=-1e9,y0=1e9;ids.forEach(i=>{x0=Math.min(x0,WA[i].x);x1=Math.max(x1,WA[i].x+WA[i].w);y0=Math.min(y0,WA[i].y);});
+  cam={x:x0-U,y:y0-2*U,s:Math.min(1,W/(x1-x0+2*U))};applyCam();}
+function setChips(){$('chips').innerHTML=Object.keys(WA).map(k=>'<span class="chip'+(WORK.includes(k)?' on':'')+'" data-chip="'+k+'">'+esc(WA[k].name.split('（')[0])+'</span>').join(' ');$('back').style.display=WORK.length||(NATIVE&&!MINI)?'':'none';renderAreas();}
+function enterWork(ids){if(ids&&ids[0]&&ids[0]!==区号)换区(ids[0]);if(LV!=3)去层(3);else{WORK=区号?[区号]:[];setChips();}}
+function 换区(k){if(!设区(k))return;if(SIDE&&SIDE.kind=='zq')closeSide();SELC=null;loadQD(true).then(()=>{renderAreas();setChips();});}   // 分卷五：点别的施工区任务、小签，第 3 层换成它
+function goHome(){closeSide();SELC=null;去层(2);renderAreas();}
+// 原生小窗的两档（方案 4.3）：小档置顶看总览；点施工区或要你拍板的黄格子切大档；「‹ 回总览」缩回小档、回到原来的位置
+function 切大档(then){去层(3);if(then)then();}
+// 11-03 04:5x：总览比 9 格窄时按窗口宽缩小（自适应比例）；切层后等窗口停稳再按宽度重算，比例跟着小窗记住的宽度走
+function 适配总览(){if(!(NATIVE&&LV==2))return;let s=Math.min(1,vp.clientWidth/(OVW*CW+2*M1));if(s>0.97)s=1;   /* 差一两点不缩（缩 0.2% 字会发虚） */if(Math.abs((cam.s||1)-s)>0.001||cam.x!==G-M1){cam.s=s;cam.x=G-M1;applyCam();}}
+addEventListener('resize',()=>{const 剩=800-(Date.now()-去层.时);const 做=()=>{if(!NATIVE&&LV==3){if(区号)fit([区号]);}else 适配总览();};if(剩>0){clearTimeout(适配总览.t);适配总览.t=setTimeout(做,剩);return;}做();});
+const 收起钮='<button class="btn sclose" data-close="1">收起</button>';
+// 卷四 6.89（用户 11-06：「详情页第一行标题也要固定，不然太长的话，收起按钮还得滚上去点击」）：「收起」和标题包成一个头，粘在右栏顶上
+function 右栏头(html){const m=html.match(/<h3>[\s\S]*?<\/h3>/),头=m?m[0]:'';return '<div class="shead">'+收起钮+头+'</div>'+(m?html.replace(头,''):html);}
+function openSide(kind,key,html){SIDE={kind,key};sidein.innerHTML=右栏头(html);side.classList.add('open');要窗();}
+function closeSide(){const 有=!!SIDE;SIDE=null;side.classList.remove('open');if(有)要窗();}
+function 等你数(){if(!DATA)return [0,0];let w=0,o=0;DATA.任务.forEach(t=>{if(t.施工区)return;(t.当前||[]).forEach(s=>{if(s.态=='w')w++;if(s.态=='o')o++;});});
+  条目们().forEach(j=>{if((j._标签||[]).some(x=>/^等你/.test(x)))w++;});return [w,o];}
+function setLine(){
+  if(断>=3){line.innerHTML='<span><b>看板服务断了</b>：下面是 '+(DATA&&DATA.时间?DATA.时间.slice(6,11):'?')+' 的旧数据，不会再变；右键菜单栏的无限表格图标，点「重开看板服务」</span>';return;}
+  const 收=false,选=NATIVE&&nbox.textContent&&!/^（/.test(nbox.textContent)?'<span class="selnm">'+esc(nbox.textContent)+'</span>':'';
+  // 选中了开着灯的格子：只写「任务名 · 谁 在干 / 等你 · N 分钟」；在干什么那一整句在展开的第一行，这里不重复（11-01 二期补三）
+  if(AGENT){const t=DATA&&DATA.任务.find(x=>x.灯.some(l=>l.谁==AGENT.谁&&l.开始==AGENT.开始&&l.会话==AGENT.会话)),m=分钟(AGENT.开始),候=AGENT.态=='等'||!!AGENT.要你;
+    line.innerHTML=选+'<i class="dotc" style="background:var(--'+色(AGENT.谁)+')"></i><span>'+esc((t?t.名+' · ':AGENT.说?AGENT.说+' · ':'')+AGENT.谁+(候?' 等你'+(AGENT.要你?'（后台在跑）':''):' 施工')+(m!=null?' · '+m+(候?' 分钟前':' 分钟'):'')+另有(t,AGENT))+'</span><span class="x" data-clear="1">×</span>'+(收?'<span class="fold" data-fold="1" style="margin-left:10px;cursor:pointer">收起</span>':'');return;}
+  const 灯=DATA?DATA.任务.flatMap(t=>t.灯):[];const 干=灯.filter(l=>l.态!='等'&&!l.要你).length,等=灯.length-干;if(NATIVE&&DATA){const k=干+':'+等;if(setLine.k!==k){setLine.k=k;原生({计:{干,等}});}}const 谁们=[...new Set(灯.map(l=>l.谁))];const [w,o]=等你数();
+  const 续=DATA?DATA.任务.filter(t=>!t.灯.length&&t.待续).length:0;const 牌数={};if(DATA)DATA.任务.forEach(t=>名牌们(t).forEach(x=>{if(x.hit)return;const k=x.字.replace('?','');牌数[k]=(牌数[k]||0)+1;}));const 主=['施工','等你','收工','跨区','待续'].filter(k=>牌数[k]).map(k=>k+' '+牌数[k]).join(' · ')||'没有谁在干';
+  // 积压（TODO 里的「需用户」，很多其实做完了、只是没回）：叫「待确认」，浅灰放后面，第一层不显示
+  const 积=(w+o)&&LV>1?'<span class="calm">&nbsp;· '+(w+o)+' 条待确认'+(o?'（其中 '+o+' 条一周没动）':'')+'</span>':'';
+  const mvt=区任务(),态=(mvt&&mvt.施工区态)||{},久=态.未发&&态.最早&&Date.now()-new Date(态.最早.replace(' ','T')).getTime()>=红点分*60000;   // 卷四 6.67：施工区改了没发 → 叫醒；过了 10 分钟 → 最左边红点
+  line.innerHTML=(久?'<i class="reddot" data-wake="1" title="'+esc(区名())+' 改了 '+态.未发格+' 格，过了 '+红点分+' 分钟还没叫醒 Claude；点一下叫醒"></i>':'')+选+(LV==3?名牌条()+'<span class="ltx"></span>':谁们.map(x=>'<i class="dotc" style="background:var(--'+色(x)+')"></i>').join('')+'<span>'+主+'</span>')+(态.未发?'<span class="wake" data-wake="1" title="把没发的改动打包发给在做 '+esc(区名())+' 的会话">'+esc(区名())+' 改了 '+态.未发格+' 格 · 叫醒 Claude</span>':'')+积+(收?'<span class="x fold" data-fold="1">收起</span>':'<span class="x" style="cursor:default">'+(DATA&&LV>1?'更新于 '+DATA.时间.slice(6):'')+'</span>');}
+// ---------- 右栏内容 ----------
+function stepSide(t,id){const s=t.当前.find(x=>x.id==id)||{id,名:'',全:''};
+  return '<h3>'+esc(t.名)+' · '+esc(s.id)+'</h3><div class="meta">编号「'+esc(t.名+'·'+s.id)+'」 · 来自 TODO 的「需用户」'+(s.态=='o'?'（一周没动）':'')+'</div><div class="ask">'+esc(净(s.全))+'</div>'+
+    '<div class="btns">'+['做完了','还没','不做了'].map(b=>'<button data-nod="'+b+'">'+b+'</button>').join('')+(!t.会话&&t.会话链接?'<a class="sess jie" href="'+esc(t.会话链接)+'" title="'+(t.接入=='codex'?'在任务目录开一个 Codex 新会话接手：第一句话替你带上（直接发出还是只填好，11-05 还没实测）':'在主工作区开一个新会话接手：第一句话替你填好了，按发送才开始；应用会先问信不信任这个工作区，点 Trust workspace（6.1，11-04 实测）')+'">接手</a>':'')+'</div><textarea id="stepNote" placeholder="或者写意见"></textarea><div class="btns"><button data-note="1">写好了</button></div><div class="msg" id="msg"></div>'+
+    '<div class="ft">'+(t.接入=='codex'?'点的、写的 Codex 会话不会自动收到（她没有插件），她接手时跑「板.py 列」才看到；要她马上知道，点名牌进她的会话直接说。':'点的、写的会投给在干这个任务的会话（Claude 会话装了「无限表格监听」，你停手 20 秒后收到）；没有会话在干的，等下次有模型读看板（「板.py 列」）。')+'</div>';}
+function 媒(p,big){const f='/'+区号+'/f/'+encodeURI(p.文件);return /\.(mp4|mov|webm)$/i.test(p.文件)?'<video class="big" src="'+f+'" controls preload="metadata"></video>':'<img class="big" src="'+(big?f:缩(p.文件))+'">';}
+function 区详情(号,栏){const c=区配(),条名=条目名();
+  const j=条目们().find(x=>x.号==号);if(!j)return '<div class="ask">这一'+esc(条名)+'没了</div>';
+  const 头=(c.行||[]).find(r=>r.类=='头')||{},头字=(头.字段||[])[0];
+  let h='<h3>'+esc(j.号)+' · '+esc(String((头字&&j[头字])||'').split(头.截到?new RegExp(头.截到):/$^/)[0])+'</h3><div class="meta">编号「'+esc(区名())+'·'+esc(j.号)+'·'+esc(栏叫(栏))+'」 · '+esc((j.段||'').split('（')[0])+'</div>';
+  if(栏=='文'){
+    h+='<div class="btns"><button data-op="'+(j.通过?'取消通过':'通过')+'">'+(j.通过?'取消「这一'+esc(条名)+'通过」':'这一'+esc(条名)+'通过')+'</button></div>';
+    const 表外=c.详情字段||[],长=c.详情长||[],有=表外.filter(k=>k==头字||(草稿(j.号,k)??(j[k]||'')).trim()),空=表外.filter(k=>!有.includes(k));   // 卷四 6.66：表格里有的字段不再摆，表外的空字段折起来
+    有.forEach(k=>{const v=草稿(j.号,k)??(j[k]||'');
+      h+='<div class="fld"><label>'+esc(k)+'</label><textarea data-field="'+esc(k)+'" data-ver="'+j.版+'" rows="'+(长.includes(k)?3:1)+'">'+esc(v)+'</textarea></div>';});
+    if(空.length)h+='<details class="blk"><summary>空着的：'+空.map(esc).join('、')+'</summary>'+空.map(k=>'<div class="fld"><label>'+esc(k)+'</label><textarea data-field="'+esc(k)+'" data-ver="'+j.版+'" rows="1"></textarea></div>').join('')+'</details>';
+    h+='<div class="ft">'+(c.行||[]).filter(r=>r.类=='头'||r.类=='状态'||r.类=='文字').map(r=>esc(r.名)).join('、')+'在表格里点格子就地改</div>';
+    h+='<div class="msg" id="msg"></div>';
+  }else{
+    const 默=默认栏();let 选=null;(j.批次||[]).filter(b=>(b.栏||默)==栏).forEach(b=>(b.产出||[]).forEach(p=>{if(p.选)选=p;}));
+    
+    const nb=j.下一批&&(j.下一批.栏||默)==栏?j.下一批:null;
+    if(nb){h+='<div class="blk"><div class="sh">第 '+nb.号+' 批'+(nb.确认?'<small>已批（'+esc(nb.确认.时间.slice(5))+'），等出</small>':nb.依据改了?'<small>'+esc(c.依据名||'依据')+'改了，等改好再批</small>':'<small>等你点头</small>')+'</div>'+
+      '<dl class="kv"><dt>出什么</dt><dd>'+esc(nb.内容)+'</dd><dt>模型</dt><dd>'+esc(nb.模型)+' · '+nb.件数+' 件</dd><dt>预计</dt><dd>'+esc(nb.预计.额度)+' '+nb.预计.数+'</dd></dl>'+
+      '<details><summary>提示词</summary><pre class="pt">'+esc(nb.提示词)+'</pre></details>'+
+      ((nb.预计||{}).额度=='无'&&!nb.确认?'<div class="ft">不花钱，Claude 直接出，不用你点头</div>':'')+(!nb.确认&&!nb.依据改了&&(nb.预计||{}).额度!='无'?'<div class="btns"><button class="main" data-confirm="'+nb.号+'" data-at="'+esc(nb.写于)+'">点头，批这一批</button></div>':'')+(nb.确认?'<div class="btns"><button data-op="撤回确认">撤回</button></div>':'')+'</div>';}
+    const 批们=(j.批次||[]).filter(b=>(b.栏||默)==栏&&(b.产出||[]).length).slice().reverse();
+    批们.forEach((b,k)=>{const 挑=!b.结论;
+      const body='<div class="cands">'+b.产出.map(p=>'<div class="cand'+(p.选?' on':'')+'" data-pick="'+esc(p.id)+'"><div class="im" style="background-image:url('+缩(p.文件)+')"></div>'+esc(p.标||p.id)+'<a href="/'+区号+'/f/'+encodeURI(p.文件)+'" target="_blank" title="看原图或原视频">↗</a></div>').join('')+'</div>'+
+        (挑?'<textarea data-redo="'+b.号+'" placeholder="要重出就写怎么改"></textarea><div class="btns"><button data-redobtn="'+b.号+'">这批重出</button></div>':'');
+      h+=k==0||挑?'<div class="blk"><div class="sh">第 '+b.号+' 批<small>'+esc(b.内容||'')+(挑?' · 等你挑':(b.结论?' · '+b.结论:''))+'</small></div>'+body+'</div>':'<details class="blk"><summary>第 '+b.号+' 批 · '+esc(b.结论||'')+'</summary>'+body+'</details>';});
+    h+='<div class="msg" id="msg"></div>';}
+  const 意=(j.意见||[]);
+  const 条=y=>'<div class="note"><small>'+esc(y.谁)+' · '+esc((y.时间||'').slice(5))+(y.谁=='用户'?(y.处理=='已处理'?' · 已处理':' · 待处理'):'')+'</small><br>'+esc(y.文)+'</div>';   // 卷四 6.66：写意见的框放最上面，只露最近两条，其余折起来
+  h+='<div class="blk"><div class="sh">意见<small>'+意.length+' 条</small></div><textarea id="zqNote" placeholder="写意见">'+esc(草稿(j.号,'意见')||'')+'</textarea><div class="btns"><button data-zqnote="1">写好了</button></div>'+意.slice(-2).reverse().map(条).join('')+(意.length>2?'<details><summary>展开全部 '+意.length+' 条</summary>'+意.slice(0,-2).reverse().map(条).join('')+'</details>':'')+'</div>';
+  return h;}
+function 草稿(号,k){try{const v=localStorage.getItem('ban-draft:'+区号+':'+号+':'+k);return v!=null?v:localStorage.getItem('ban-draft:'+号+':'+k);}catch(e){return null;}}
+function 存草稿(号,k,v){try{localStorage.removeItem('ban-draft:'+号+':'+k);v==null?localStorage.removeItem('ban-draft:'+区号+':'+号+':'+k):localStorage.setItem('ban-draft:'+区号+':'+号+':'+k,v);}catch(e){}}
+function msg(t,err){const m=$('msg');if(m){m.textContent=t;m.className='msg'+(err?' err':'');}}
+// 施工区的操作：页面里写 条（哪一个条目），发出去换成这个区的条目名（MV：镜）
+async function 区操作(a,ok){if(!区号)return false;if('条' in a){a[条目名()]=a.条;delete a.条;}
+  try{const r=await api('/api/施工区/'+区号+'/op',a);if(r.状态){QD=r.状态;QDREV=QD.改动号;}else await loadQD(true);renderAreas();if(SIDE&&SIDE.kind=='zq')rerenderSide();(SIDE?msg:底提示)(ok||'记下了');return true;}
+  catch(e){if(e.status==409){await loadQD(true);renderAreas();(SIDE?msg:底提示)('这一'+条目名()+'刚被改过，你没存上的字留在草稿里，再点一下格子看一眼再存',true);}else (SIDE?msg:底提示)(e.message,true);return false;}}
+function rerenderSide(){if(!SIDE)return;if(sidein.contains(document.activeElement)&&/TEXTAREA|INPUT/.test(document.activeElement.tagName))return;
+  if(SIDE.kind=='zq'){const [号,栏]=SIDE.key.split('|');sidein.innerHTML=右栏头(等你行(号,栏)+区详情(号,栏));}
+  else if(SIDE.kind=='step'){const [k,id]=SIDE.key.split('|');const t=DATA.任务.find(x=>x.键==k);if(t)sidein.innerHTML=右栏头(stepSide(t,id));}}
+// ---------- 点 ----------
+vp.addEventListener('click',async e=>{
+  const ha=e.target.closest('[data-hacc]');if(ha){e.stopPropagation();try{await api('/api/施工区/'+区号+'/验收',{格:ha.dataset.hacc});}catch(x){底提示('没记上：'+x.message,true);}tick();return;}   // 卷四 6.67：格子上「验收 / 等你」的名牌点一下 = 知道了
+  const dd=e.metaKey&&e.target.closest('[data-dir]');if(dd){e.preventDefault();e.stopPropagation();try{await api('/api/打开',JSON.parse(dd.dataset.dir));}catch(x){alert('没打开：'+x.message);}return;}   // 11-03 05:2x：⌘ 单击标题才开文件夹，单击照常展开
+  const od=e.target.closest('[data-open]');if(od){e.preventDefault();e.stopPropagation();try{await api('/api/打开',JSON.parse(od.dataset.open));}catch(x){alert('没打开：'+x.message);}return;}
+  if(e.target.closest('a.sess,a.go2'))return;
+  const fz=e.target.closest('[data-fold-done]');if(fz){e.stopPropagation();做完开=!做完开;try{localStorage.setItem('ban.做完开',做完开?'1':'0');}catch(x){}renderOverview(cv,MAIN);return;}
+  const pn=e.target.closest('[data-pin],[data-down]');if(pn){e.stopPropagation();const k=pn.dataset.cl,b={...(布()[k]||{})};if(pn.dataset.pin!=null){if(pn.dataset.pin=='1')b.常驻=true;else delete b.常驻;}else b.放下=Date.now()/1000;await 存布局({[k]:b});tick();return;}
+  const ak=e.target.closest('[data-ack]');if(ak){e.stopPropagation();const cl=ak.closest('[data-cl]');try{await api('/api/板',{op:'知道了',任务:cl.dataset.cl,谁:ak.dataset.ack});}catch(x){alert('没记上：'+x.message);}tick();return;}
+  const sp=e.target.closest('[data-step]');if(sp){const [k,id]=sp.dataset.step.split('|');openStep(k,id);return;}
+  const hp=e.target.closest('[data-hpick]');if(hp){e.stopPropagation();const [号,产出]=hp.dataset.hpick.split('|');await 区操作({op:'选',条:号,产出},'记下了你选的');return;}
+  const hv=e.target.closest('[data-hpv]');if(hv){e.stopPropagation();const [号,k,id]=hv.dataset.hpv.split('|');if(行配(k).视频)开视频(号,id);else 开灯箱(号,k,id);return;}
+  const he=e.target.closest('.wa [data-edit]');if(he){开编辑(he);return;}
+  const c=e.target.closest('[data-cell]');if(c){const [号,k0]=c.dataset.cell.split('|'),栏=行栏(k0)||((区配().栏||[]).includes(k0)?k0:'文');SELC=号+'|'+栏;nbox.textContent=区名()+'·'+号+'·'+栏叫(栏);
+    const j=条目们().find(x=>x.号==号);if(!j)return;const ag=栏!='文'&&j.在出&&(j.批次||[]).some(b=>b.号==j.在出&&(b.栏||默认栏())==栏);AGENT=ag?{谁:'Claude',说:'在出 '+号+' 第 '+j.在出+' 批',开始:null}:null;setLine();
+    openSide('zq',SELC,等你行(号,栏)+区详情(号,栏));renderAreas();return;}
+  const r=e.target.closest('[data-t]');if(r){const t=DATA.任务.find(x=>x.键==r.dataset.t);if(!t)return;nbox.textContent=t.名;
+    if(t.施工区){换区(t.施工区);去层(3);return;}
+    if(LV<=1){MAIN.open.add(t.键);AGENT=主灯(t);去层(2);setLine();return;}   // 第 1 层点一行：到总览，把它展开
+    if(r.classList.contains('fold')){const b={...(布()[t.键]||{})};delete b.折;delete b.w;delete b.h;存布局({[t.键]:b});return;}
+    MAIN.open.has(t.键)?MAIN.open.delete(t.键):MAIN.open.add(t.键);renderOverview(cv,MAIN);AGENT=主灯(t);setLine();}});
+// 拖动：按住块拖过半格才算挪（不到半格就是单击，照旧展开）；松手吸附格子，落点压着别的块就和压得最多的那块换位；
+// 拖右下角把手改大小，拉到 1 格就折起来；拖进底行就收起（归档），底行的小方块拖到上面就放回来。只在总览（第 2 层）里。
+const 拖={on:0};
+function 画内(ev){const r=cv.getBoundingClientRect(),s=cam.s||1;return {x:(ev.clientX-r.left)/s,y:(ev.clientY-r.top)/s};}
+function 压最多(k,gx,gy,w,h){let 最=null,面=0;for(const [kk,p] of Object.entries(排过[0].pos)){if(kk==k)continue;
+  const ox=Math.min(gx+w,p.gx+p.gw)-Math.max(gx,p.gx),oy=Math.min(gy+h,p.gy+p.gh)-Math.max(gy,p.gy);if(ox>0&&oy>0&&ox*oy>面){面=ox*oy;最=kk;}}return 最;}
+async function 存布局(改){DATA.布局=Object.assign({},布(),改);for(const k of Object.keys(DATA.布局))if(DATA.布局[k]==null)delete DATA.布局[k];
+  renderOverview(cv,MAIN);try{await api('/api/布局',{改});}catch(x){alert('位置没存上：'+x.message);}}
+vp.addEventListener('pointerdown',e=>{
+  if(LV!=2||e.button!==0||e.metaKey||e.ctrlKey||!DATA||!排过)return;
+  const dot=e.target.closest('.sleep [data-k]'),gp=e.target.closest('[data-grip]'),r=e.target.closest('.r[data-t]');
+  if(!dot&&(!r||r.classList.contains('row1')))return;
+  if(!gp&&e.target.closest('[data-step],[data-ack],[data-pin],[data-down],a,.claim'))return;
+  const k=dot?dot.dataset.k:r.dataset.t,t=DATA.任务.find(x=>x.键==k);if(!t)return;
+  const p=dot?null:排过[0].pos[k];if(!dot&&!p)return;
+  Object.assign(拖,{on:0,k,t,el:r,dot,改大:!!gp,出档:!!dot,起:画内(e),p,id:e.pointerId,gw:p?p.gw:块格0(t),gh:p?p.gh:2,到:null,档:0,新:null});});
+addEventListener('pointermove',e=>{if(!拖.k||e.pointerId!==拖.id)return;const q=画内(e),dx=q.x-拖.起.x,dy=q.y-拖.起.y;
+  if(!拖.on){if(Math.hypot(dx,dy)<G/2)return;拖.on=1;document.body.classList.add('dragging');
+    拖.框=document.createElement('div');拖.框.className='drop';cv.appendChild(拖.框);
+    if(!拖.改大){拖.影=拖.出档?document.createElement('div'):拖.el.cloneNode(true);拖.影.className=(拖.出档?'r fold':拖.el.className)+' drag-ghost';拖.影.removeAttribute('data-t');
+      if(拖.出档){拖.影=拖.dot.cloneNode(true);拖.影.removeAttribute('data-k');拖.影.className=拖.dot.className+' drag-ghost';拖.影.style.cssText='position:absolute;margin:0;width:'+拖.dot.offsetWidth+'px;height:'+拖.dot.offsetHeight+'px';}else{拖.影.style.cssText=拖.el.style.cssText;拖.el.classList.add('dragsrc');}
+      cv.appendChild(拖.影);}}
+  e.preventDefault();
+  const 框=(x,y,w,h,字)=>{Object.assign(拖.框.style,{left:x+I+'px',top:y+I+'px',width:w-2*I+'px',height:h-2*I+'px'});拖.框.textContent=字||'';};
+  if(拖.改大){const p=拖.p,w=Math.max(1,Math.min(OVW-p.gx,Math.round((q.x-p.x)/CW))),h=Math.max(1,Math.min(40,Math.round((q.y-p.y)/U)));拖.新=[w,h];
+    框(p.x,p.y,w*CW,h*U,w<=1||h<=1?'折起来':'');return;}
+  const 影x=拖.出档?q.x-CW/2:拖.p.x+I+dx,影y=拖.出档?q.y-G/2:拖.p.y+I+dy;拖.影.style.left=影x+'px';拖.影.style.top=影y+'px';
+  const sl=cv.querySelector('.sleep'),slY=sl?sl.offsetTop:1e9;
+  if(!拖.出档&&q.y>=slY-8){拖.档=1;拖.到=null;框(G,slY-6,OVW*CW,sl.offsetHeight+12,'放进来就收起');return;}
+  拖.档=0;const gx=Math.max(0,Math.min(OVW-拖.gw,Math.round((影x-I-G)/CW))),gy=Math.max(1,Math.round((影y-I)/U));拖.到={gx,gy};
+  框(G+gx*CW,gy*U,拖.gw*CW,拖.gh*U);});
+function 收拖(){document.body.classList.remove('dragging');if(拖.框)拖.框.remove();if(拖.影)拖.影.remove();if(拖.el)拖.el.classList.remove('dragsrc');
+  const 欠=拖.欠;Object.assign(拖,{on:0,k:null,框:null,影:null,el:null,欠:0});if(欠)renderOverview(cv,MAIN);}
+function 放拖(){const B=布(),k=拖.k,改={};
+  // 第一次手动排：总览里看得见的都按现在的位置钉住，免得别的块跟着洗牌（你排过的不洗牌）
+  for(const [kk,p] of Object.entries(排过[0].pos))if(!B[kk]||B[kk].x==null)改[kk]={...(B[kk]||{}),x:p.gx,y:p.gy};
+  const 我={...(B[k]||{}),...(改[k]||{})};
+  if(拖.改大){const [w,h]=拖.新||[拖.gw,拖.gh];if(w<=1||h<=1)我.折=true;else{delete 我.折;我.w=w;我.h=h;}}
+  else if(拖.档)我.档=true;
+  else if(拖.到){const {gx,gy}=拖.到;
+    if(!拖.出档){const 他=压最多(k,gx,gy,拖.gw,拖.gh);if(他)改[他]={...(B[他]||{}),...(改[他]||{}),x:拖.p.gx,y:拖.p.gy};}
+    delete 我.档;if(拖.出档)我.显=true;我.x=gx;我.y=gy;}
+  else return;
+  改[k]=我;存布局(改);}
+addEventListener('pointerup',e=>{if(!拖.k||e.pointerId!==拖.id)return;if(拖.on){拖.吞=Date.now();const k=拖.k;拖.on=0;try{放拖();}finally{收拖();}}else 收拖();});
+addEventListener('pointercancel',e=>{if(拖.k&&e.pointerId===拖.id)收拖();});
+addEventListener('click',e=>{if(拖.吞&&Date.now()-拖.吞<500){e.stopPropagation();e.preventDefault();拖.吞=0;}},true);   // 拖过的那一下不算单击
+function openStep(k,id){const t=DATA.任务.find(x=>x.键==k);if(!t)return;nbox.textContent=t.名+'·'+id;openSide('step',k+'|'+id,stepSide(t,id));}
+// 施工区格子交付了在等你看：右栏最上面一行「知道了」
+function 等你行(号,栏){const t=区任务();if(!t)return '';const g=号+':'+栏;
+  return [...new Set(t.灯.filter(l=>l.态=='等'&&(l.格子||[]).includes(g)).map(l=>l.谁))].map(谁=>'<p class="ackln">'+esc(谁)+' 交付了，等你看 · <span class="ackbtn" data-ack="'+esc(谁)+'" data-cl="'+esc(t.键)+'" title="看过了：框和名牌消失">知道了</span></p>').join('');}
+side.addEventListener('click',async e=>{
+  const ak=e.target.closest('[data-ack]');if(ak){try{await api('/api/板',{op:'知道了',任务:ak.dataset.cl,谁:ak.dataset.ack});ak.closest('.ackln').remove();}catch(x){alert('没记上：'+x.message);}tick();return;}
+  if(e.target.closest('[data-close]')){closeSide();SELC=null;AGENT=null;setLine();renderAreas();return;}
+  const n=e.target.closest('[data-nod]');if(n&&SIDE.kind=='step'){const [k,id]=SIDE.key.split('|');try{await api('/api/板',{op:'点',任务:k,步骤:id,值:n.dataset.nod});side.querySelectorAll('[data-nod]').forEach(b=>b.classList.toggle('pk',b==n));msg('记下了：你点了「'+n.dataset.nod+'」');}catch(x){msg(x.message,true);}return;}
+  if(e.target.closest('[data-note]')&&SIDE.kind=='step'){const [k,id]=SIDE.key.split('|');const v=$('stepNote').value.trim();if(!v)return msg('意见是空的',true);try{await api('/api/板',{op:'意见',任务:k,步骤:id,文:v});$('stepNote').value='';msg('记下了');}catch(x){msg(x.message,true);}return;}
+  if(!SIDE||SIDE.kind!='zq')return;const [号,栏]=SIDE.key.split('|');
+  const cf=e.target.closest('[data-confirm]');if(cf){await 区操作({op:'确认',条:号,批号:+cf.dataset.confirm,写于:cf.dataset.at},'批了这一批，Claude 下次读表时出');return;}
+  const pk=e.target.closest('[data-pick]');if(pk&&!e.target.closest('a')){await 区操作({op:'选',条:号,产出:pk.dataset.pick},'记下了你选的');return;}
+  const rb=e.target.closest('[data-redobtn]');if(rb){const ta=side.querySelector('[data-redo="'+rb.dataset.redobtn+'"]');await 区操作({op:'重出',条:号,批号:+rb.dataset.redobtn,意见:ta?ta.value:''},'记下了，这批重出');return;}
+  const op=e.target.closest('[data-op]');if(op){await 区操作({op:op.dataset.op,条:号});return;}
+  if(e.target.closest('[data-zqnote]')){const v=$('zqNote').value.trim();if(!v)return msg('意见是空的',true);if(await 区操作({op:'意见',条:号,文:v,挂:栏=='文'?'':栏},'记下了')){存草稿(号,'意见',null);$('zqNote').value='';}return;}});
+side.addEventListener('input',e=>{if(!SIDE||SIDE.kind!='zq')return;const [号]=SIDE.key.split('|');const f=e.target.dataset.field;if(f)存草稿(号,f,e.target.value);if(e.target.id=='zqNote')存草稿(号,'意见',e.target.value);});
+side.addEventListener('focusout',async e=>{const f=e.target.dataset&&e.target.dataset.field;if(!f||!SIDE||SIDE.kind!='zq')return;const [号]=SIDE.key.split('|');const j=条目们().find(x=>x.号==号);
+  if(!j||(j[f]||'')==e.target.value){存草稿(号,f,null);return;}
+  if(await 区操作({op:'改格',条:号,字段:f,值:e.target.value,版:+e.target.dataset.ver},'存好了')){存草稿(号,f,null);}});
+line.addEventListener('click',e=>{if(e.target.closest('[data-clear]')){AGENT=null;setLine();}if(e.target.closest('[data-wake]'))叫醒();});
+// 旧版小窗（11-02 以前编的）点它第一层的一条会叫这个；重开成新小窗就用不上了
+window.原生打开任务=k=>{if(!DATA)return false;const t=DATA.任务.find(x=>x.键==k);if(!t)return false;if(!t.施工区)MAIN.open.add(k);else 换区(t.施工区);去层(t.施工区?3:2);return true;};
+// 第 1 层悬停一行：底下一行写它在干什么（11-03 起进会话在名牌上、开文件夹在标题后面，都是悬停出小箭头）
+cv.addEventListener('mouseover',e=>{if(LV!=1||断>=3)return;const r=e.target.closest('.r.row1'),k=r&&r.dataset.t;if(k===悬停)return;悬停=k;if(!k){setLine();return;}const t=DATA.任务.find(x=>x.键==k),话=t?悬停话(t):'';if(!话)return;const l=主灯(t);line.innerHTML='<i class="dotc" style="background:var(--'+(l?色(l.谁):'xu')+')"></i><span>'+esc(话)+'</span>';});
+cv.addEventListener('mouseleave',()=>{if(悬停){悬停=null;setLine();}});
+line.addEventListener('mouseover',e=>{const a=e.target.closest('.lt');if(!a||!DATA)return;const t=DATA.任务.find(x=>x.键==a.dataset.t),x=line.querySelector('.ltx'),l=t&&a.dataset.w&&t.灯.find(y=>(y.会话||'')==a.dataset.s&&y.谁==a.dataset.w);if(t&&x)x.textContent=状态话(t,a.textContent,l||null);line.querySelectorAll('.lt.on').forEach(y=>y.classList.remove('on'));a.classList.add('on');});
+line.addEventListener('mouseleave',()=>{const x=line.querySelector('.ltx');if(x)x.textContent='';line.querySelectorAll('.lt.on').forEach(y=>y.classList.remove('on'));});
+let 悬停=null;
+new MutationObserver(()=>{if(NATIVE)setLine();}).observe(nbox,{childList:true,characterData:true,subtree:true});
+$('back').addEventListener('click',goHome);
+$('chips').addEventListener('click',e=>{const c=e.target.closest('[data-chip]');if(!c)return;const k=c.dataset.chip;WORK.includes(k)?goHome():enterWork([k]);});
+// 卷四 6.86（用户 11-06：「施工区我建议还是可以上下左右，不然为什么叫无限表格……方向键逐格移动，以及按住空白区域拖动画布」）：第 3 层方向键一次走一格（左右 64、上下 32），
+// 在打字、看大图时不抢；按住空白处拖画布（格子、名牌、候选、按钮、文字框上不算），挪不到 4 像素算单击，拖过以后松手那一下不当点击
+addEventListener('keydown',e=>{if(LV!=3||e.metaKey||e.ctrlKey||e.altKey)return;const d={ArrowLeft:[-CW,0],ArrowRight:[CW,0],ArrowUp:[0,-G],ArrowDown:[0,G]}[e.key];if(!d)return;if(e.target&&e.target.closest&&e.target.closest('input,textarea,select,[contenteditable]'))return;if($('lbx')&&$('lbx').classList.contains('on'))return;e.preventDefault();const b=镜头边界();cam.x=Math.min(b.x1,Math.max(b.x0,cam.x+d[0]));cam.y=Math.min(b.y1,Math.max(b.y0,cam.y+d[1]));applyCam();});
+vp.addEventListener('mousedown',e=>{if(LV!=3||e.button!==0||e.target.closest('[data-cell],a,button,input,textarea,select,[contenteditable],.ctag,.mcands,.hin'))return;const 起={x:e.clientX,y:e.clientY,cx:cam.x,cy:cam.y};let 拖=false;const 移=ev=>{const dx=ev.clientX-起.x,dy=ev.clientY-起.y;if(!拖&&Math.hypot(dx,dy)<4)return;拖=true;vp.classList.add('grabbing');cv.classList.add('pan');const b=镜头边界();cam.x=Math.min(b.x1,Math.max(b.x0,起.cx-dx/cam.s));cam.y=Math.min(b.y1,Math.max(b.y0,起.cy-dy/cam.s));applyCam();};const 放=()=>{removeEventListener('mousemove',移);removeEventListener('mouseup',放);vp.classList.remove('grabbing');cv.classList.remove('pan');if(拖){const 吞=ev=>{ev.stopPropagation();ev.preventDefault();};addEventListener('click',吞,{capture:true,once:true});setTimeout(()=>removeEventListener('click',吞,{capture:true}),0);}};addEventListener('mousemove',移);addEventListener('mouseup',放);});
+vp.addEventListener('wheel',e=>{if(e.target.closest&&e.target.closest('.hin'))return;   /* 分卷五 8.8：点开的那格自己上下滑，表格不动 */e.preventDefault();if(LV<=1)return;cv.classList.add('pan');{const b=镜头边界();let dx=e.deltaX,dy=e.deltaY;if(e.shiftKey&&Math.abs(dy)>Math.abs(dx)){dx=dy;dy=0;}   // 卷四 6.86：普通滚轮照常上下，Shift + 滚轮当左右（鼠标只有上下的量）
+  cam.x=NATIVE&&LV==2?G-M1:Math.min(b.x1,Math.max(b.x0,cam.x+dx/cam.s));cam.y=Math.min(b.y1,Math.max(b.y0,cam.y+dy/cam.s));}applyCam();clearTimeout(vp._t);vp._t=setTimeout(()=>cv.classList.remove('pan'),150);},{passive:false});
+// ---------- 数据 ----------
+async function loadBoard(){try{DATA=await api('/api/看板');设区(区号);renderOverview(cv,MAIN);{const el=cv.querySelector('.wa');if(el)横排虚(el,false);}setLine();if(SIDE&&SIDE.kind=='step')rerenderSide();}catch(e){line.textContent='读不到看板：'+e.message;}}
+async function loadQD(force){if(!区号){QD=null;return false;}const k=区号;try{const r=await api('/api/施工区/'+k+'/rev');if(!force&&r.改动号===QDREV)return false;const d=await api('/api/施工区/'+k);if(k!==区号)return false;QD=d;QDREV=QD.改动号;return true;}catch(e){QD=null;return false;}}
+let 忙=false,再=false,VER=null,PAGEV=null;
+async function tick(){if(忙){再=true;return;}忙=true;
+  try{await loadBoard();if(await loadQD()){renderAreas();if(SIDE&&SIDE.kind=='zq')rerenderSide();}setLine();}finally{忙=false;if(再){再=false;tick();}}}
+// 开灯关灯、你在别处点的：服务那边一变就重读（1.5 秒问一次，只比修改时间，很便宜），开工后 3 秒内出框；
+// 页面文件本身改了（换版）就整页刷新，不用按 ⌘R（11-01 二期补三）
+// 连着 3 次问不到服务（约 5 秒）：整块变灰、底下一行写断了、数据是几点的；连上就复原、重读（卷二 7.40：11-04 服务停了约 40 分钟，页面照旧像活着）
+async function 看版(){try{const r=await api('/api/版');if(断>=3){document.body.classList.remove('断线');断=0;tick();}断=0;if(r.页&&PAGEV&&r.页!==PAGEV){location.reload();return;}PAGEV=r.页||PAGEV;if(VER!==null&&r.版!==VER)tick();VER=r.版;}catch(e){if(++断==3){document.body.classList.add('断线');setLine();}}}
+// ---------- 置顶小窗（原生：工具/小窗.swift） ----------
+$('pipBtn').addEventListener('click',async e=>{const b=e.currentTarget;try{await api('/api/小窗',{});b.textContent='小窗开了';setTimeout(()=>{b.textContent='置顶小窗';},2500);}
+  catch(x){alert('小窗没打开：'+x.message+(x.message=='没有这个地址'?'（看板服务还是旧的：关掉那个终端窗口，再双击 打开无限表格.command）':''));}});
+if(NATIVE){$('pipBtn').style.display='none';document.body.classList.add('nat');}   // 在第几层由小窗定（小窗一开是第 1 层；页面重新载入后小窗再告诉它一次）
+setChips();applyCam();tick();if(V==='A'){setInterval(tick,6000);setInterval(看版,1500);}else{const 轮=(f,快,慢)=>{const go=()=>setTimeout(()=>{f();go();},document.hidden?慢:快);go();};轮(tick,6000,30000);轮(看版,1500,10000);document.addEventListener('visibilitychange',()=>{if(!document.hidden){看版();镜头();}});}
+(async()=>{for(let k=0;k<60&&!DATA;k++)await new Promise(r=>setTimeout(r,100));去层(location.hash=='#mv'?3:LV,1);})();
+</script>
+</body>
+</html>

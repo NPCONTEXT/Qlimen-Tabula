@@ -1,0 +1,7 @@
+{
+ "名字": "Codex",
+ "说明": "ChatGPT 桌面应用里的 Codex：打开会话 codex://threads/<会话号>（会话号 = 她会话记录首行的 id）；在任务目录开新会话、带第一句话 codex://threads/new?path=<目录>&prompt=<话>（第一句是直接发出还是只填好，作者没实测）。她不用敲 板.py：设置.json 里 Codex.开 = true 时，看板服务每 3 秒读 ~/.codex/sessions，照每轮开始、结束和回复开头的状态词替她开关灯。给她读的指南在 接入/codex-指南.md。占位符同 claude.json。",
+ "打开会话": "codex://threads/{会话}",
+ "新会话": "codex://threads/new?path={目录}&prompt={话}",
+ "接手话": "接手「{名}」（{目录}）：照协议接手（没装 Qlimen 就先读这个目录的 TODO.md）；看板上我点过、写过的，跑 /usr/bin/python3 {板} 列 看。"
+}
